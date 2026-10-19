@@ -1,0 +1,17 @@
+# Dependencias
+node_modules/
+
+# Variables y contraseñas privadas
+.env
+.env.*
+!.env.example
+
+# Expo
+.expo/
+
+# Compilaciones
+dist/
+build/
+
+# Archivos temporales
+*.log
