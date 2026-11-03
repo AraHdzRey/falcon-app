@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import cookieParser from 'cookie-parser';
 import { pool } from './config/database';
 import empleadosRoutes from './routes/empleados.routes';
 import authRoutes from './routes/auth.routes';
@@ -32,10 +33,13 @@ const PORT = Number(process.env.PORT) || 3000;
 app.use(
     cors({
         origin: ['http://localhost:8081'],
+        credentials: true,
     })
 );
 
 app.use(express.json());
+app.use(cookieParser());
+
 
 app.get('/api/health', (_req, res) => {
     res.json({

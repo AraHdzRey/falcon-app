@@ -1,5 +1,8 @@
 import { Request, Response } from 'express';
 import { pool } from '../config/database';
+import {
+    conCodigoEmpleadoUnico,
+} from '../services/codigo-empleado.service';
 import { esUltimoAdministradorActivo } from '../services/proteccion-admin.service';
 import { obtenerClienteAdmin } from '../services/conexion-admin.service';
 import { validarNuevoEmpleado, validarEdicionEmpleado, } from '../validators/empleados.validator';
@@ -89,37 +92,45 @@ export const registrarEmpleadoAdmin = async (
     }
 
     try {
-        const resultado = await pool.query(
-            `INSERT INTO public.empleados (
-            nombre,
-            apellido_paterno,
-            apellido_materno,
-            correo,
-            departamento,
-            puesto,
-            fecha_ingreso,
-            activo
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
-        ON CONFLICT (correo) DO NOTHING RETURNING
-            id,
-            nombre,
-            apellido_paterno,
-            apellido_materno,
-            correo,
-            departamento,
-            puesto,
-            fecha_ingreso,
-            activo`,
-        [
-            datos.nombre,
-            datos.apellido_paterno,
-            datos.apellido_materno,
-            datos.correo,
-            datos.departamento,
-            datos.puesto,
-            datos.fecha_ingreso,
-        ]
+        const resultado = await conCodigoEmpleadoUnico(
+            async (codigoEmpleado) => {
+                return pool.query(
+                    `INSERT INTO public.empleados (
+                        codigo_empleado,
+                    nombre,
+                    apellido_paterno,
+                    apellido_materno,
+                    correo,
+                    departamento,
+                    puesto,
+                    fecha_ingreso,
+                    activo
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE)
+                    ON CONFLICT (correo) DO NOTHING
+                    RETURNING
+                        id,
+                    codigo_empleado,
+                    nombre,
+                    apellido_paterno,
+                    apellido_materno,
+                    correo,
+                    departamento,
+                    puesto,
+                    fecha_ingreso,
+                    activo`,
+                [
+                    codigoEmpleado,
+                    datos.nombre,
+                    datos.apellido_paterno,
+                    datos.apellido_materno,
+                    datos.correo,
+                    datos.departamento,
+                    datos.puesto,
+                    datos.fecha_ingreso,
+                ]
+            );
+            }
     );
 
     if (resultado.rows.length === 0) {

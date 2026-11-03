@@ -1,7 +1,10 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { COLORS } from '../../src/constants/colors';
+import { useSesion } from '../../src/context/sesion.context';
 
 export default function HomeScreen() {
+  const { cerrarSesion } = useSesion();
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>FALCÓN</Text>
@@ -18,6 +21,18 @@ export default function HomeScreen() {
         Un espacio para conectar, informar y escuchar
         a nuestros colaboradores.
       </Text>
+
+      <Pressable
+        onPress={cerrarSesion}
+        style={styles.logoutButton}
+        accessibilityRole="button"
+        accessibilityLabel="Cerrar sesión"
+      >
+        <Text style={styles.logoutButtonText}>
+          Cerrar sesión
+        </Text>
+      </Pressable>
+
     </View>
   );
 }
@@ -55,4 +70,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 24,
   },
+
+  logoutButton: {
+    marginTop: 32,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 10,
+    alignItems: 'center',
+    minWidth: 180,
+  },
+  logoutButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
 });

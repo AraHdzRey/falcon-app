@@ -2,25 +2,33 @@ import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 
 import { iniciarSesion } from '../controllers/auth.controller';
+import { consultarSesionWeb } from '../controllers/sesion.controller';
 
 const router = Router();
 
 const limitarIntentosLogin = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    limit: 5,
-    standardHeaders: 'draft-8',
-    legacyHeaders: false,
-    message: {
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: {
     status: 'error',
     message:
-        'Demasiados intentos de inicio de sesión. Intenta nuevamente en 15 minutos.',
-    },
+      'Demasiados intentos de inicio de sesión. Intenta nuevamente en 15 minutos.',
+  },
 });
 
+// Inicio de sesión mediante ID de empleado y contraseña.
 router.post(
-    '/login',
-    limitarIntentosLogin,
-    iniciarSesion
+  '/login',
+  limitarIntentosLogin,
+  iniciarSesion
+);
+
+// Consultar una sesión web mediante cookie HttpOnly.
+router.get(
+  '/sesion',
+  consultarSesionWeb
 );
 
 export default router;
