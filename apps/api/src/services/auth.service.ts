@@ -34,20 +34,22 @@ export const crearCuenta = async (
 };
 
 export const validarCredenciales = async (
-    correo: string,
+    codigoEmpleado: string,
     contrasena: string
 ): Promise<number | null> => {
+    const codigoNormalizado = codigoEmpleado.trim().toUpperCase();
+
     const resultado = await pool.query(
         `SELECT
             c.empleado_id,
             c.password_hash
-        FROM cuentas_acceso c
-        INNER JOIN empleados e
+        FROM public.cuentas_acceso c
+        INNER JOIN public.empleados e
             ON e.id = c.empleado_id
-        WHERE LOWER(e.correo) = LOWER($1)
+        WHERE e.codigo_empleado = $1
             AND c.activo = TRUE
             AND e.activo = TRUE`,
-        [correo]
+        [codigoNormalizado]
     );
 
     if (resultado.rows.length !== 1) {
@@ -65,5 +67,11 @@ export const validarCredenciales = async (
         return null;
     }
 
-    return Number(cuenta.empleado_id);
+    const empleadoId = Number(cuenta.empleado_id);
+
+    if (!Number.isSafeInteger(empleadoId) || empleadoId <= 0) {
+        return null;
+    }
+
+    return empleadoId;
 };
