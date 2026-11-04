@@ -1,9 +1,44 @@
+
+import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+
 import { COLORS } from '../../src/constants/colors';
 import { useSesion } from '../../src/context/sesion.context';
 
 export default function HomeScreen() {
   const { cerrarSesion } = useSesion();
+
+  const [cerrandoSesion, setCerrandoSesion] = useState(false);
+  const [errorCierre, setErrorCierre] = useState<string | null>(null);
+
+  // Evitar solicitudes duplicadas al pulsar rápidamente.
+  const cierreEnCurso = useRef(false);
+
+  const manejarCerrarSesion = async (): Promise<void> => {
+    if (cierreEnCurso.current) {
+      return;
+    }
+
+    cierreEnCurso.current = true;
+    setCerrandoSesion(true);
+    setErrorCierre(null);
+
+    try {
+      // Web: espera a que Express elimine la cookie.
+      // Android: elimina el estado local de autenticación.
+      await cerrarSesion();
+    } catch (error) {
+      const mensaje =
+        error instanceof Error
+          ? error.message
+          : 'No se pudo cerrar sesión. Intenta nuevamente.';
+
+      setErrorCierre(mensaje);
+    } finally {
+      cierreEnCurso.current = false;
+      setCerrandoSesion(false);
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -23,16 +58,34 @@ export default function HomeScreen() {
       </Text>
 
       <Pressable
-        onPress={cerrarSesion}
-        style={styles.logoutButton}
+        onPress={() => {
+          void manejarCerrarSesion();
+        }}
+        disabled={cerrandoSesion}
+        style={[
+          styles.logoutButton,
+          cerrandoSesion && styles.logoutButtonDisabled,
+        ]}
         accessibilityRole="button"
         accessibilityLabel="Cerrar sesión"
+        accessibilityState={{
+          disabled: cerrandoSesion,
+          busy: cerrandoSesion,
+        }}
       >
         <Text style={styles.logoutButtonText}>
-          Cerrar sesión
+          {cerrandoSesion ? 'Cerrando sesión...' : 'Cerrar sesión'}
         </Text>
       </Pressable>
 
+      {errorCierre !== null && (
+        <Text
+          style={styles.errorText}
+          accessibilityLiveRegion="polite"
+        >
+          {errorCierre}
+        </Text>
+      )}
     </View>
   );
 }
@@ -70,7 +123,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 24,
   },
-
   logoutButton: {
     marginTop: 32,
     backgroundColor: COLORS.primary,
@@ -80,10 +132,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     minWidth: 180,
   },
+  logoutButtonDisabled: {
+    opacity: 0.6,
+  },
   logoutButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
   },
-
+  errorText: {
+    marginTop: 16,
+    color: '#B42318',
+    fontSize: 14,
+    textAlign: 'center',
+  },
 });
