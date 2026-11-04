@@ -1,8 +1,10 @@
+
 import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 
 import { iniciarSesion } from '../controllers/auth.controller';
 import { consultarSesionWeb } from '../controllers/sesion.controller';
+import { cerrarSesionWeb } from '../controllers/logout.controller';
 
 const router = Router();
 
@@ -29,6 +31,12 @@ router.post(
 router.get(
   '/sesion',
   consultarSesionWeb
+);
+
+// Cerrar la sesión web eliminando la cookie HttpOnly.
+router.post(
+  '/logout',
+  cerrarSesionWeb
 );
 
 export default router;

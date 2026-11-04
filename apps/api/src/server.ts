@@ -74,8 +74,19 @@ app.use('/api/auth',authRoutes);
 app.use('/api/empleados', empleadosRoutes);
 app.use('/api/admin', adminRoutes);
 
-app.listen(PORT, '127.0.0.1', () => {
-    console.log(
-        'Servidor FALCÓN en http://localhost:' +PORT
-    );
+
+
+const HOST_ESCUCHA =
+  process.env.FALCON_LISTEN_HOST === '0.0.0.0'
+    ? '0.0.0.0'
+    : '127.0.0.1';
+
+
+app.listen(PORT, HOST_ESCUCHA, () => {
+  console.log(
+    `Servidor FALCÓN en http://localhost:${PORT}`
+  );
+  console.log(
+    `Interfaz de escucha: ${HOST_ESCUCHA}`
+  );
 });

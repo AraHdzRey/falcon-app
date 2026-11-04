@@ -8,6 +8,7 @@ import {
 import { Platform } from 'react-native';
 
 import { consultarSesionWeb } from '../services/sesion-web.service';
+import { cerrarSesionWebApi } from '../services/logout-web.service';
 
 // Datos de la sesión autenticada
 interface Sesion {
@@ -22,7 +23,7 @@ interface SesionContexto {
   verificandoSesionWeb: boolean;
   iniciarSesion: (token: string, duracionSegundos: number) => void;
   iniciarSesionWeb: (duracionSegundos: number) => void;
-  cerrarSesion: () => void;
+  cerrarSesion: () => Promise<void>;
 }
 
 const ContextoSesion = createContext<SesionContexto | undefined>(
@@ -145,10 +146,19 @@ export function SesionProvider({
     });
   };
 
-  // Eliminar el estado local de la sesión.
-  const cerrarSesion = () => {
-    setSesion(null);
-  };
+  // Cerrar la sesión según la plataforma.
+    const cerrarSesion = async (): Promise<void> => {
+      if (Platform.OS === 'web') {
+      // Esperar la confirmación de Express antes de
+      // eliminar el estado de autenticación local.
+        await cerrarSesionWebApi();
+      }
+
+    // En Android se limpia el estado local directamente.
+    // En Web se limpia solo después del logout exitoso.
+      setSesion(null);
+    };
+
 
   const sesionActiva =
     sesion !== null && sesion.expiraEn > Date.now();
