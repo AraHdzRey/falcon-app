@@ -57,6 +57,14 @@ export default function TabLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="perfil-colaborador"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
+        name="noticia"
+        options={{ href: null }}
+      />
     </Tabs>
   );
 }
