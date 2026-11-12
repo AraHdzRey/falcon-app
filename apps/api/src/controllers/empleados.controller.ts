@@ -1,23 +1,17 @@
 import { Request, Response } from 'express';
-import { pool } from '../config/database';
+import { consultarEmpleados } from '../services/empleados.service';
 
 export const obtenerEmpleados = async (
     _req: Request,
     res: Response
 ): Promise<void> => {
     try {
-        const resultado = await pool.query(
-            `SELECT id, nombre, apellido_paterno,
-            apellido_materno, correo, departamento,
-            puesto, fecha_ingreso, activo
-            FROM empleados
-            ORDER BY id ASC`
-        );
+        const empleados = await consultarEmpleados();
 
         res.json({
         status: 'ok',
-        total: resultado.rows.length,
-        empleados: resultado.rows,
+        total: empleados.length,
+        empleados,
         });
     } catch (error) {
         console.error('Error al consultar empleados:', error);
