@@ -1,280 +1,273 @@
-import React, { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
-  View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  SafeAreaView,
+  StatusBar,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  ScrollView,
-  ActivityIndicator,
-  Alert,
-  StyleSheet,
-  StatusBar,
+  View,
 } from 'react-native';
-
-type Empleado = {
-  id: number;
-  nombre: string;
-  puesto: string;
-};
-
-const API_URL = 'http://192.168.100.33:3000/api/empleados';
+import {
+  getMe,
+  login,
+  logout,
+  type FalconSession,
+} from './src/api/client';
 
 export default function App() {
-  const [empleados, setEmpleados] = useState<Empleado[]>([]);
-  const [nombre, setNombre] = useState('');
-  const [puesto, setPuesto] = useState('');
-  const [cargando, setCargando] = useState(true);
-  const [guardando, setGuardando] = useState(false);
-  const [error, setError] = useState('');
+  const [numeroEmpleado, setNumeroEmpleado] = useState('');
+  const [contrasena, setContrasena] = useState('');
+  const [session, setSession] = useState<FalconSession | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  // Consultar empleados registrados
-  const obtenerEmpleados = async () => {
-    setCargando(true);
-    setError('');
-
+  const handleLogin = async () => {
+    if (!numeroEmpleado.trim() || !contrasena) {
+      Alert.alert('Campos requeridos', 'Escribe tu ID de empleado y contraseña.');
+      return;
+    }
+    setLoading(true);
     try {
-      const respuesta = await fetch(API_URL);
-
-      if (!respuesta.ok) {
-        throw new Error('Error al consultar empleados');
-      }
-
-      const datos: Empleado[] = await respuesta.json();
-      setEmpleados(datos);
-
+      const nextSession = await login(numeroEmpleado, contrasena);
+      const user = await getMe(nextSession.token);
+      setSession({ ...nextSession, user });
+      setContrasena('');
     } catch (error) {
-      setError('No se pudo conectar con el servidor FALCÓN');
+      Alert.alert(
+        'No se pudo iniciar sesión',
+        error instanceof Error ? error.message : 'Error inesperado.',
+      );
     } finally {
-      setCargando(false);
+      setLoading(false);
     }
   };
 
-  // Registrar un nuevo empleado
-  const guardarEmpleado = async () => {
-    const nombreLimpio = nombre.trim();
-    const puestoLimpio = puesto.trim();
-
-    if (!nombreLimpio || !puestoLimpio) {
-      Alert.alert(
-        'Campos obligatorios',
-        'Escribe el nombre y el puesto del empleado.'
-      );
-      return;
-    }
-
-    if (nombreLimpio.length > 100 || puestoLimpio.length > 100) {
-      Alert.alert(
-        'Datos demasiado largos',
-        'Cada campo debe tener como máximo 100 caracteres.'
-      );
-      return;
-    }
-
-    setGuardando(true);
-
+  const handleLogout = async () => {
+    if (!session) return;
+    setLoading(true);
     try {
-      const respuesta = await fetch(API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          nombre: nombreLimpio,
-          puesto: puestoLimpio,
-        }),
-      });
-
-      if (!respuesta.ok) {
-        throw new Error('No se pudo guardar el empleado');
-      }
-
-      Alert.alert(
-        'Registro exitoso',
-        'El empleado fue guardado correctamente.'
-      );
-
-      setNombre('');
-      setPuesto('');
-
-      await obtenerEmpleados();
-
+      await logout(session.token);
+      setSession(null);
     } catch (error) {
       Alert.alert(
-        'Error',
-        'No se pudo registrar el empleado.'
+        'No se pudo cerrar sesión',
+        error instanceof Error ? error.message : 'Error inesperado.',
       );
     } finally {
-      setGuardando(false);
+      setLoading(false);
     }
   };
-
-  useEffect(() => {
-    obtenerEmpleados();
-  }, []);
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
+    <SafeAreaView style={styles.safe}>
+      <StatusBar barStyle="light-content" backgroundColor="#7A0010" />
+      <View style={styles.header}>
+        <Text style={styles.brand}>FALCÓN</Text>
+      </View>
 
-      <ScrollView keyboardShouldPersistTaps="handled">
-        <Text style={styles.titulo}>FALCÓN</Text>
-
-        <Text style={styles.subtitulo}>
-          Sistema de Gestión de Empleados
-        </Text>
-
-        <Text style={styles.seccion}>
-          Registrar empleado
-        </Text>
-
-        <TextInput
-          style={styles.input}
-          placeholder="Nombre del empleado"
-          placeholderTextColor="#64748B"
-          value={nombre}
-          onChangeText={setNombre}
-          maxLength={100}
+      <View style={styles.content}>
+        <Image
+          source={require('./assets/imagen-login.png')}
+          style={styles.image}
+          resizeMode="contain"
+          accessibilityLabel="Identidad visual FALCÓN"
         />
 
-        <TextInput
-          style={styles.input}
-          placeholder="Puesto del empleado"
-          placeholderTextColor="#64748B"
-          value={puesto}
-          onChangeText={setPuesto}
-          maxLength={100}
-        />
-
-        <TouchableOpacity
-          style={[
-            styles.boton,
-            guardando && styles.botonDeshabilitado,
-          ]}
-          onPress={guardarEmpleado}
-          disabled={guardando}
-        >
-          <Text style={styles.textoBoton}>
-            {guardando ? 'Guardando...' : 'Guardar empleado'}
-          </Text>
-        </TouchableOpacity>
-
-        <Text style={styles.seccion}>
-          Lista de empleados
-        </Text>
-
-        {cargando ? (
-          <ActivityIndicator size="large" color="#60A5FA" />
-        ) : error ? (
-          <Text style={styles.error}>{error}</Text>
-        ) : empleados.length === 0 ? (
-          <Text style={styles.mensaje}>
-            No hay empleados registrados.
-          </Text>
+        {session ? (
+          <View style={styles.card}>
+            <Text style={styles.title}>Sesión activa</Text>
+            <Text style={styles.name}>{session.user.name}</Text>
+            <Text style={styles.detail}>
+              ID: {session.user.employeeNumber}
+            </Text>
+            <Text style={styles.detail}>Rol: {session.user.role}</Text>
+            <Text style={styles.notice}>
+              La autenticación se validó en la API local. La aplicación móvil no
+              accede directamente a PostgreSQL.
+            </Text>
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={handleLogout}
+              disabled={loading}
+              accessibilityRole="button"
+            >
+              {loading ? (
+                <ActivityIndicator color="#7A0010" />
+              ) : (
+                <Text style={styles.secondaryButtonText}>Cerrar sesión</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         ) : (
-          empleados.map((empleado) => (
-            <View key={empleado.id} style={styles.tarjeta}>
-              <Text style={styles.nombre}>
-                {empleado.nombre}
-              </Text>
-              <Text style={styles.puesto}>
-                Puesto: {empleado.puesto}
-              </Text>
-            </View>
-          ))
+          <View style={styles.card}>
+            <Text style={styles.title}>Bienvenido</Text>
+            <Text style={styles.subtitle}>
+              Ingresa con tu ID de empleado.
+            </Text>
+            <TextInput
+              style={styles.input}
+              value={numeroEmpleado}
+              onChangeText={setNumeroEmpleado}
+              placeholder="ID de empleado"
+              autoCapitalize="characters"
+              autoCorrect={false}
+              maxLength={50}
+              editable={!loading}
+              accessibilityLabel="ID de empleado"
+            />
+            <TextInput
+              style={styles.input}
+              value={contrasena}
+              onChangeText={setContrasena}
+              placeholder="Contraseña"
+              secureTextEntry
+              maxLength={128}
+              editable={!loading}
+              accessibilityLabel="Contraseña"
+            />
+            <TouchableOpacity
+              style={[styles.primaryButton, loading && styles.disabled]}
+              onPress={handleLogin}
+              disabled={loading}
+              accessibilityRole="button"
+            >
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Iniciar sesión</Text>
+              )}
+            </TouchableOpacity>
+            <Text style={styles.help}>
+              La dirección de la API se configura una sola vez mediante
+              EXPO_PUBLIC_API_URL.
+            </Text>
+          </View>
         )}
-
-        <TouchableOpacity
-          style={styles.botonActualizar}
-          onPress={obtenerEmpleados}
-        >
-          <Text style={styles.textoBoton}>
-            Actualizar empleados
-          </Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </View>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safe: {
     flex: 1,
-    backgroundColor: '#10243A',
+    backgroundColor: '#F2F2F2',
+  },
+  header: {
+    backgroundColor: '#7A0010',
+    paddingHorizontal: 28,
+    paddingVertical: 20,
+  },
+  brand: {
+    color: '#FFFFFF',
+    fontSize: 28,
+    fontWeight: '800',
+    letterSpacing: 8,
+  },
+  content: {
+    flex: 1,
+    justifyContent: 'center',
     padding: 24,
-    paddingTop: 60,
   },
-  titulo: {
-    fontSize: 38,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
+  image: {
+    alignSelf: 'center',
+    width: 220,
+    height: 110,
+    marginBottom: 16,
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 24,
+    shadowColor: '#000000',
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  title: {
+    color: '#242424',
+    fontSize: 26,
+    fontWeight: '700',
     textAlign: 'center',
   },
-  subtitulo: {
-    fontSize: 16,
-    color: '#60A5FA',
+  subtitle: {
+    color: '#666666',
+    fontSize: 15,
     textAlign: 'center',
-    marginBottom: 30,
-  },
-  seccion: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 15,
-    marginTop: 20,
+    marginTop: 6,
+    marginBottom: 22,
   },
   input: {
-    backgroundColor: '#FFFFFF',
-    padding: 15,
+    borderColor: '#D5D5D5',
+    borderWidth: 1,
     borderRadius: 10,
-    marginBottom: 12,
-    color: '#10243A',
+    paddingHorizontal: 14,
+    paddingVertical: 13,
     fontSize: 16,
+    color: '#202020',
+    marginBottom: 12,
   },
-  boton: {
-    backgroundColor: '#16A34A',
-    padding: 16,
+  primaryButton: {
+    backgroundColor: '#C8102E',
     borderRadius: 10,
+    minHeight: 50,
     alignItems: 'center',
-    marginBottom: 20,
+    justifyContent: 'center',
+    marginTop: 6,
   },
-  botonDeshabilitado: {
-    opacity: 0.6,
+  disabled: {
+    opacity: 0.65,
   },
-  botonActualizar: {
-    backgroundColor: '#2563EB',
-    padding: 16,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 15,
-    marginBottom: 30,
-  },
-  textoBoton: {
+  primaryButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
-  tarjeta: {
-    backgroundColor: '#FFFFFF',
-    padding: 20,
-    borderRadius: 12,
-    marginBottom: 12,
+  help: {
+    color: '#777777',
+    fontSize: 12,
+    lineHeight: 17,
+    textAlign: 'center',
+    marginTop: 18,
   },
-  nombre: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#10243A',
+  name: {
+    color: '#7A0010',
+    fontSize: 20,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: 18,
   },
-  puesto: {
+  detail: {
+    color: '#444444',
     fontSize: 15,
-    color: '#475569',
-    marginTop: 5,
-  },
-  error: {
-    color: '#FCA5A5',
     textAlign: 'center',
+    marginTop: 6,
   },
-  mensaje: {
-    color: '#FFFFFF',
-    textAlign: 'center',
+  notice: {
+    backgroundColor: '#F9ECEE',
+    color: '#5C111D',
+    borderRadius: 10,
+    padding: 14,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 20,
+  },
+  secondaryButton: {
+    borderColor: '#C8102E',
+    borderWidth: 1,
+    borderRadius: 10,
+    minHeight: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 18,
+  },
+  secondaryButtonText: {
+    color: '#7A0010',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });
