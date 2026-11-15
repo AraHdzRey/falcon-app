@@ -71,13 +71,30 @@ Esta evidencia se registra sólo aquí. Notion no fue modificado.
 ## Validación técnica
 
 - Backend integrado: instalación desde lockfile, árbol de dependencias,
-  TypeScript, ESLint, build y siete pruebas HTTP.
-- Frontend integrado: instalación desde lockfile, TypeScript, ESLint, tres
+  TypeScript, ESLint, build y once pruebas HTTP.
+- Frontend integrado: instalación desde lockfile, TypeScript, ESLint, cinco
   pruebas, compatibilidad Expo y 21/21 comprobaciones de Expo Doctor.
 - Dependencias de producción backend: 0 vulnerabilidades reportadas.
 - Dependencias de producción frontend: tres avisos moderados transitivos de
   `minimatch` a través de Expo. El arreglo automático ofrecido degrada Expo 57
   a Expo 52; se rechazó por ser incompatible y requerir `--force`.
+
+## Actualización Fase 0.9 — offline-first
+
+Implementado en la rama de integración:
+
+- SQLite `falcon_local.db` con perfil, directorio, noticias, metadata y outbox.
+- JWT sólo en SecureStore; ninguna contraseña/hash en SQLite.
+- Polling de cuatro segundos y refresco manual.
+- Timeout de API de cinco segundos, reintentos persistentes e indicador pendiente.
+- Migración `002_offline_sync.sql`, versión central e idempotencia por UUID.
+- Endpoints `/sync/changes` y `/sync/operations` con rol editorial/admin.
+- Conflicto por `baseVersion` con política servidor-gana documentada.
+- Backend 11/11 y frontend 5/5 pruebas; Expo Doctor 21/21.
+
+Pendiente observado: prueba física A/B/C, reapertura offline real, cambio de red
+a perfil Private, regla específica de firewall y actualización de Platform
+Tools bloqueada por `adb.exe`. No se declara éxito de tres dispositivos.
 
 ## Procedencia de la integración
 
