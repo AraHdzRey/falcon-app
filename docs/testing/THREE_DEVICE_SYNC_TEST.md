@@ -8,7 +8,7 @@ ADB no detectó teléfonos; no se simulan resultados.
 1. Conectar A, B y C a la misma Wi-Fi que la PC.
 2. Clasificar esa Wi-Fi como `Private` y permitir sólo TCP 3000/Private.
 3. Mantener PostgreSQL, API y Metro activos; no usar emuladores.
-4. Configurar `EXPO_PUBLIC_API_URL=http://192.168.1.75:3000`.
+4. Configurar `EXPO_PUBLIC_API_URL=http://<IP_LAN_DE_LA_PC>:3000`.
 5. Abrir el proyecto en Expo Go y autenticar `TI001` personalmente.
 
 ## Consistencia online

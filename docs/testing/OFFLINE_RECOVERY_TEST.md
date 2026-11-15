@@ -1,6 +1,9 @@
 # Prueba de caída y recuperación offline
 
-Estado actual: lógica validada automáticamente; ejecución física pendiente.
+## Estado
+
+- **LÓGICA AUTOMÁTICA: VALIDADA**.
+- **PRUEBA FÍSICA: PENDIENTE**.
 
 ## Caída
 
