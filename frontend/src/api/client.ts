@@ -1,3 +1,9 @@
+import type {
+  OperationResult,
+  OutboxOperation,
+  SyncSnapshot,
+} from '../sync/types';
+
 export interface FalconUser {
   id: number;
   collaboratorId: number;
@@ -30,6 +36,24 @@ export const normalizeApiUrl = (value: string | undefined): string => {
 const apiBaseUrl = (): string =>
   normalizeApiUrl(process.env.EXPO_PUBLIC_API_URL);
 
+const apiFetch = async (
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5_000);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('La API local no respondió en cinco segundos.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
 const readJson = async (response: Response): Promise<unknown> => {
   try {
     return await response.json();
@@ -42,7 +66,7 @@ export const login = async (
   employeeId: string,
   password: string,
 ): Promise<FalconSession> => {
-  const response = await fetch(`${apiBaseUrl()}/auth/login`, {
+  const response = await apiFetch(`${apiBaseUrl()}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -79,7 +103,7 @@ export const login = async (
 };
 
 export const getMe = async (token: string): Promise<FalconUser> => {
-  const response = await fetch(`${apiBaseUrl()}/auth/me`, {
+  const response = await apiFetch(`${apiBaseUrl()}/auth/me`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const body = await readJson(response);
@@ -95,11 +119,66 @@ export const getMe = async (token: string): Promise<FalconUser> => {
 };
 
 export const logout = async (token: string): Promise<void> => {
-  const response = await fetch(`${apiBaseUrl()}/auth/logout`, {
+  const response = await apiFetch(`${apiBaseUrl()}/auth/logout`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!response.ok) {
     throw new Error('No se pudo cerrar la sesión en el servidor.');
   }
+};
+
+export const pushSyncOperations = async (
+  token: string,
+  deviceId: string,
+  operations: OutboxOperation[],
+): Promise<OperationResult[]> => {
+  const response = await apiFetch(`${apiBaseUrl()}/sync/operations`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      deviceId,
+      operations: operations.map(({ deviceId: _deviceId, ...operation }) => operation),
+    }),
+  });
+  const body = await readJson(response);
+  if (
+    !response.ok ||
+    typeof body !== 'object' ||
+    body === null ||
+    !('results' in body) ||
+    !Array.isArray(body.results)
+  ) {
+    throw new Error('La API no aceptó el outbox local.');
+  }
+  return body.results as OperationResult[];
+};
+
+export const pullSyncChanges = async (
+  token: string,
+  sinceVersion: number,
+): Promise<SyncSnapshot> => {
+  const response = await apiFetch(
+    `${apiBaseUrl()}/sync/changes?sinceVersion=${sinceVersion}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  const body = await readJson(response);
+  if (
+    !response.ok ||
+    typeof body !== 'object' ||
+    body === null ||
+    !('serverVersion' in body) ||
+    typeof body.serverVersion !== 'number' ||
+    !('profile' in body) ||
+    !('directory' in body) ||
+    !Array.isArray(body.directory) ||
+    !('news' in body) ||
+    !Array.isArray(body.news)
+  ) {
+    throw new Error('La API devolvió una sincronización inválida.');
+  }
+  return body as SyncSnapshot;
 };

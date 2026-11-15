@@ -11,6 +11,7 @@ export const openApiDocument = {
     { name: 'Health' },
     { name: 'Authentication' },
     { name: 'Authorization' },
+    { name: 'Synchronization' },
   ],
   components: {
     securitySchemes: {
@@ -31,6 +32,25 @@ export const openApiDocument = {
         properties: {
           status: { type: 'string', const: 'error' },
           message: { type: 'string' },
+        },
+      },
+      SyncOperation: {
+        type: 'object',
+        required: ['id', 'entity', 'operation', 'baseVersion', 'payload'],
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          entity: { type: 'string', const: 'news' },
+          operation: { type: 'string', const: 'upsert' },
+          baseVersion: { type: ['integer', 'null'], minimum: 1 },
+          payload: {
+            type: 'object',
+            required: ['id', 'title', 'body'],
+            properties: {
+              id: { type: 'string', format: 'uuid' },
+              title: { type: 'string', maxLength: 160 },
+              body: { type: 'string', maxLength: 2000 },
+            },
+          },
         },
       },
     },
@@ -104,6 +124,61 @@ export const openApiDocument = {
           '200': { description: 'Administrador autorizado' },
           '401': { description: 'Autenticación requerida' },
           '403': { description: 'Rol insuficiente' },
+        },
+      },
+    },
+    '/sync/changes': {
+      get: {
+        tags: ['Synchronization'],
+        summary: 'Descarga perfil, directorio y noticias desde una versión',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'sinceVersion',
+            in: 'query',
+            required: false,
+            schema: { type: 'integer', minimum: 0, default: 0 },
+          },
+        ],
+        responses: {
+          '200': { description: 'Cambios y versión central' },
+          '400': { description: 'Versión inválida' },
+          '401': { description: 'Autenticación requerida' },
+        },
+      },
+    },
+    '/sync/operations': {
+      post: {
+        tags: ['Synchronization'],
+        summary: 'Aplica un lote idempotente del outbox móvil',
+        description:
+          'Los conflictos de versión no se sobrescriben: el servidor devuelve el registro vigente.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['deviceId', 'operations'],
+                properties: {
+                  deviceId: { type: 'string', format: 'uuid' },
+                  operations: {
+                    type: 'array',
+                    minItems: 1,
+                    maxItems: 50,
+                    items: { $ref: '#/components/schemas/SyncOperation' },
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Resultados applied, duplicate o conflict' },
+          '400': { description: 'Lote inválido' },
+          '401': { description: 'Autenticación requerida' },
+          '403': { description: 'Rol editorial o administrador requerido' },
         },
       },
     },

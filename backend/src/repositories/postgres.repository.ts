@@ -7,6 +7,14 @@ import type {
   LoginResult,
   SessionUser,
 } from '../types/auth';
+import type {
+  DirectoryEntry,
+  NewsItem,
+  OperationResult,
+  SyncOperation,
+  SyncRepository,
+  SyncSnapshot,
+} from '../types/sync';
 
 const ROLES: ReadonlySet<string> = new Set([
   'colaborador',
@@ -64,7 +72,7 @@ const accountSelect = `
 
 export const createPostgresRepository = (
   pool: Pool,
-): AuthRepository & HealthRepository => ({
+): AuthRepository & HealthRepository & SyncRepository => ({
   async verifyCredentials(
     employeeNumber: string,
     password: string,
@@ -121,5 +129,190 @@ export const createPostgresRepository = (
       'SELECT current_database() AS database',
     );
     return { database: result.rows[0]?.database ?? 'unknown' };
+  },
+
+  async getChanges(
+    user: SessionUser,
+    sinceVersion: number,
+  ): Promise<SyncSnapshot> {
+    const [stateResult, directoryResult, newsResult] = await Promise.all([
+      pool.query<{ version: string }>(
+        'SELECT version::text FROM sync_state WHERE id = 1',
+      ),
+      pool.query<DirectoryEntry>(`
+        SELECT
+          c.id::int AS id,
+          c.numero_empleado AS "employeeId",
+          c.nombre AS name,
+          COALESCE(
+            (ARRAY_AGG(r.codigo ORDER BY ur.es_principal DESC, r.id)
+              FILTER (WHERE r.codigo IS NOT NULL))[1],
+            'colaborador'
+          ) AS role,
+          c.actualizado_en::text AS "updatedAt"
+        FROM colaboradores AS c
+        LEFT JOIN usuarios AS u ON u.colaborador_id = c.id AND u.activo = TRUE
+        LEFT JOIN usuario_roles AS ur ON ur.usuario_id = u.id
+        LEFT JOIN roles AS r ON r.id = ur.rol_id
+        WHERE c.activo = TRUE
+        GROUP BY c.id
+        ORDER BY c.nombre, c.id
+      `),
+      pool.query<NewsItem>(
+        `SELECT
+           id::text,
+           titulo AS title,
+           contenido AS body,
+           version::int,
+           actualizado_en::text AS "updatedAt"
+         FROM noticias
+         WHERE activo = TRUE AND version > $1
+         ORDER BY version, id`,
+        [sinceVersion],
+      ),
+    ]);
+    return {
+      serverVersion: Number(stateResult.rows[0]?.version ?? 0),
+      profile: {
+        id: user.userId,
+        collaboratorId: user.collaboratorId,
+        employeeNumber: user.employeeNumber,
+        name: user.name,
+        role: user.role,
+      },
+      directory: directoryResult.rows,
+      news: newsResult.rows,
+    };
+  },
+
+  async applyOperations(
+    user: SessionUser,
+    operations: SyncOperation[],
+  ): Promise<OperationResult[]> {
+    const client = await pool.connect();
+    const results: OperationResult[] = [];
+    try {
+      await client.query('BEGIN');
+      for (const operation of operations) {
+        const previous = await client.query<{
+          estado: 'applied' | 'conflict';
+          applied_version: string | null;
+        }>(
+          `SELECT estado, applied_version::text
+           FROM sync_operations WHERE id = $1`,
+          [operation.id],
+        );
+        if (previous.rows[0]) {
+          const current = previous.rows[0].estado === 'conflict'
+            ? (
+                await client.query<NewsItem>(
+                  `SELECT id::text, titulo AS title, contenido AS body,
+                          version::int, actualizado_en::text AS "updatedAt"
+                   FROM noticias WHERE id = $1`,
+                  [operation.payload.id],
+                )
+              ).rows[0]
+            : undefined;
+          results.push({
+            id: operation.id,
+            status:
+              previous.rows[0].estado === 'conflict' ? 'conflict' : 'duplicate',
+            version: previous.rows[0].applied_version
+              ? Number(previous.rows[0].applied_version)
+              : null,
+            current,
+          });
+          continue;
+        }
+
+        const existing = await client.query<NewsItem>(
+          `SELECT id::text, titulo AS title, contenido AS body,
+                  version::int, actualizado_en::text AS "updatedAt"
+           FROM noticias WHERE id = $1 FOR UPDATE`,
+          [operation.payload.id],
+        );
+        const current = existing.rows[0];
+        const conflict = current
+          ? operation.baseVersion !== current.version
+          : operation.baseVersion !== null;
+        if (conflict) {
+          await client.query(
+            `INSERT INTO sync_operations
+               (id, device_id, usuario_id, entidad, operacion, payload, estado)
+             VALUES ($1, $2, $3, $4, $5, $6::jsonb, 'conflict')`,
+            [
+              operation.id,
+              operation.deviceId,
+              user.userId,
+              operation.entity,
+              operation.operation,
+              JSON.stringify(operation.payload),
+            ],
+          );
+          results.push({
+            id: operation.id,
+            status: 'conflict',
+            version: current?.version ?? null,
+            current,
+          });
+          continue;
+        }
+
+        const state = await client.query<{ version: string }>(
+          `UPDATE sync_state
+           SET version = version + 1, actualizado_en = NOW()
+           WHERE id = 1 RETURNING version::text`,
+        );
+        const nextVersion = Number(state.rows[0]?.version);
+        const updated = await client.query<NewsItem>(
+          `INSERT INTO noticias
+             (id, titulo, contenido, version, creado_por)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (id) DO UPDATE
+           SET titulo = EXCLUDED.titulo,
+               contenido = EXCLUDED.contenido,
+               version = EXCLUDED.version,
+               actualizado_en = NOW(),
+               activo = TRUE
+           RETURNING id::text, titulo AS title, contenido AS body,
+                     version::int, actualizado_en::text AS "updatedAt"`,
+          [
+            operation.payload.id,
+            operation.payload.title,
+            operation.payload.body,
+            nextVersion,
+            user.userId,
+          ],
+        );
+        await client.query(
+          `INSERT INTO sync_operations
+             (id, device_id, usuario_id, entidad, operacion, payload,
+              estado, applied_version)
+           VALUES ($1, $2, $3, $4, $5, $6::jsonb, 'applied', $7)`,
+          [
+            operation.id,
+            operation.deviceId,
+            user.userId,
+            operation.entity,
+            operation.operation,
+            JSON.stringify(operation.payload),
+            nextVersion,
+          ],
+        );
+        results.push({
+          id: operation.id,
+          status: 'applied',
+          version: nextVersion,
+          current: updated.rows[0],
+        });
+      }
+      await client.query('COMMIT');
+      return results;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   },
 });

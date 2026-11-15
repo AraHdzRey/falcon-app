@@ -10,6 +10,7 @@ const repository = createPostgresRepository(pool);
 const app = createApp({
   authRepository: repository,
   healthRepository: repository,
+  syncRepository: repository,
   tokens: createTokenService(config.jwtSecret),
   corsOrigins: config.corsOrigins,
 });

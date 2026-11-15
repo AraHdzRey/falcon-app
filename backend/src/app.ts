@@ -3,13 +3,16 @@ import express, { type ErrorRequestHandler } from 'express';
 import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
 import type { AuthRepository, HealthRepository } from './types/auth';
+import type { SyncRepository } from './types/sync';
 import type { TokenService } from './services/token.service';
 import { createAuthRouter } from './routes/auth.routes';
 import { openApiDocument } from './openapi';
+import { createSyncRouter } from './routes/sync.routes';
 
 export interface AppDependencies {
   authRepository: AuthRepository;
   healthRepository: HealthRepository;
+  syncRepository: SyncRepository;
   tokens: TokenService;
   corsOrigins?: string[];
 }
@@ -62,6 +65,13 @@ export const createApp = (dependencies: AppDependencies) => {
   });
   app.use('/docs', swaggerUi.serve, swaggerUi.setup(openApiDocument));
   app.use(createAuthRouter(dependencies.authRepository, dependencies.tokens));
+  app.use(
+    createSyncRouter(
+      dependencies.authRepository,
+      dependencies.syncRepository,
+      dependencies.tokens,
+    ),
+  );
 
   app.use((_req, res) => {
     res.status(404).json({
