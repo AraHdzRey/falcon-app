@@ -1,6 +1,6 @@
-import bcrypt from 'bcrypt';
 import { createPool } from '../config/database';
 import { loadConfig } from '../config/env';
+import { hashPassword } from '../services/password.service';
 
 const EMPLOYEE_ID = 'TI001';
 const DEMO_NAME = 'Usuario Demo FALCÓN';
@@ -12,7 +12,7 @@ const run = async () => {
     throw new Error('DEMO_PASSWORD debe contener entre 12 y 128 caracteres');
   }
 
-  const passwordHash = await bcrypt.hash(password, 12);
+  const passwordHash = await hashPassword(password);
   const pool = createPool(loadConfig());
   const client = await pool.connect();
 

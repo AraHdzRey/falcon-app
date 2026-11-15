@@ -10,8 +10,12 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src tests",
     "test": "node --import tsx --test tests/**/*.test.ts",
+    "test:db": "node --import tsx --test tests/database.integration.test.ts",
     "db:migrate": "tsx src/scripts/migrate.ts",
-    "db:seed-demo": "tsx src/scripts/seed-demo-user.ts"
+    "db:seed": "tsx src/scripts/seed-dev.ts",
+    "db:seed-demo": "tsx src/scripts/seed-demo-user.ts",
+    "db:verify": "tsx src/scripts/verify-database.ts",
+    "db:reset": "tsx src/scripts/reset-database.ts"
   },
   "engines": {
     "node": ">=24 <25",

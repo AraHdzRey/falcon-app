@@ -3,7 +3,7 @@ import path from 'node:path';
 import { createPool } from '../config/database';
 import { loadConfig } from '../config/env';
 
-const run = async () => {
+export const runMigrations = async (): Promise<void> => {
   const pool = createPool(loadConfig());
   const client = await pool.connect();
   const migrationsPath = path.resolve(__dirname, '../../migrations');
@@ -48,7 +48,9 @@ const run = async () => {
   }
 };
 
-void run().catch((error) => {
-  console.error('No se pudieron aplicar las migraciones:', error);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  void runMigrations().catch((error: unknown) => {
+    console.error('No se pudieron aplicar las migraciones:', error);
+    process.exitCode = 1;
+  });
+}

@@ -1,5 +1,5 @@
-import bcrypt from 'bcrypt';
 import type { Pool } from 'pg';
+import { verifyPassword } from '../services/password.service';
 import type {
   AuthRepository,
   FalconRole,
@@ -89,7 +89,7 @@ export const createPostgresRepository = (
 
     const row = result.rows[0];
     const hash = row?.password_hash ?? DUMMY_HASH;
-    const valid = await bcrypt.compare(password, hash);
+    const valid = await verifyPassword(password, hash);
     if (!row || !valid) return null;
 
     const user = toSessionUser(row);

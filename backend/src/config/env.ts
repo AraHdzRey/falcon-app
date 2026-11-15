@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 
 export interface FalconConfig {
+  nodeEnv: 'development' | 'test' | 'production';
   host: string;
   port: number;
   databaseUrl: {
@@ -35,6 +36,11 @@ const parsePort = (name: string, fallback: number): number => {
 export const loadConfig = (): FalconConfig => {
   dotenv.config({ path: process.env.DOTENV_CONFIG_PATH || '.env' });
 
+  const nodeEnv = process.env.NODE_ENV?.trim() || 'development';
+  if (!['development', 'test', 'production'].includes(nodeEnv)) {
+    throw new Error('NODE_ENV debe ser development, test o production');
+  }
+
   const host = process.env.HOST?.trim() || '0.0.0.0';
   if (host !== '0.0.0.0' && host !== '127.0.0.1') {
     throw new Error('HOST debe ser 0.0.0.0 o 127.0.0.1');
@@ -46,6 +52,7 @@ export const loadConfig = (): FalconConfig => {
   }
 
   return {
+    nodeEnv: nodeEnv as FalconConfig['nodeEnv'],
     host,
     port: parsePort('PORT', 3000),
     databaseUrl: {

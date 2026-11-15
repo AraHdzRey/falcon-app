@@ -9,6 +9,7 @@ node_modules/
 .env
 .env.*
 !.env.example
+!.env.test.example
 .npmrc
 
 # Claves privadas y certificados
@@ -24,10 +25,14 @@ node_modules/
 # Registros y archivos temporales
 *.log
 *.tsbuildinfo
+*.dump
+*.backup
 coverage/
 tmp/
 temp/
 .cache/
+postgres-data/
+pgdata/
 
 # Expo y React Native
 .expo/
