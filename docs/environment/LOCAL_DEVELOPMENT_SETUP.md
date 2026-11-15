@@ -10,10 +10,19 @@
 ## Instalación reproducible
 
 ```powershell
-cd Proyecto-FALCON\backend
+git clone https://github.com/brendarlara17-ui/Proyecto-FALCON.git
+cd Proyecto-FALCON
+
+cd backend
 npm ci
+npm run db:migrate
+$env:DEMO_PASSWORD = Read-Host 'Contraseña dummy temporal'
+npm run db:seed
+npm run db:verify
+Remove-Item Env:DEMO_PASSWORD
 npm run typecheck
 npm run lint
+npm run build
 npm test
 
 cd ..\frontend
@@ -27,6 +36,12 @@ npm test
 
 No ejecutar `npm audit fix --force`: el remedio ofrecido para dependencias
 transitivas de Expo implica una regresión mayor de SDK.
+
+Antes de migrar, crear `falcon_db` y configurar `backend/.env`. Para pruebas
+destructivas usar exclusivamente `falcon_test`, `NODE_ENV=test` y
+`backend/.env.test.example` como referencia. El procedimiento completo,
+incluidos reset, pruebas con PostgreSQL real, backup y restore, está en
+[`README_DATABASE.md`](../database/README_DATABASE.md).
 
 ## Configuración
 
@@ -50,10 +65,12 @@ Nunca usar `localhost` desde el teléfono: allí se refiere al propio teléfono.
 ## Orden de arranque
 
 1. Confirmar `Get-Service postgresql*`.
-2. En `backend/`, ejecutar `npm run db:migrate` y luego `npm start`.
+2. En `backend/`, ejecutar `npm run db:migrate`, `npm run build` y luego
+   `npm start`.
 3. Verificar `curl.exe http://127.0.0.1:3000/health`.
-4. En `frontend/`, ejecutar `npx expo start --lan`.
-5. Abrir Expo Go en el teléfono físico y comprobar login/logout.
+4. Verificar `curl.exe http://127.0.0.1:3000/health/db`.
+5. En `frontend/`, ejecutar `npx expo start --lan`.
+6. Abrir Expo Go en el teléfono físico y comprobar login/logout.
 
 No guardar la contraseña de PostgreSQL en comandos. Usar un `.env` local
 ignorado o una consola que la solicite con `Read-Host -AsSecureString`.
