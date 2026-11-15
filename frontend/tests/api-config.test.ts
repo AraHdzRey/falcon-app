@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { normalizeApiUrl } from '../src/api/client';
 
-test('normaliza una URL LAN configurada', () => {
+test('normaliza una URL configurada', () => {
   assert.equal(
-    normalizeApiUrl(' http://192.168.1.20:3000/ '),
-    'http://192.168.1.20:3000',
+    normalizeApiUrl(' http://192.0.2.20:3000/ '),
+    'http://192.0.2.20:3000',
   );
 });
 
