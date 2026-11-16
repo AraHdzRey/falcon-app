@@ -10,7 +10,7 @@
 ## Instalación reproducible
 
 ```powershell
-git clone https://github.com/brendarlara17-ui/Proyecto-FALCON.git
+git clone https://github.com/AraHdzRey/falcon-app.git
 cd Proyecto-FALCON
 
 cd backend

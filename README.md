@@ -4,7 +4,13 @@ Aplicación móvil de gestión con frontend React Native/Expo, API REST local en
 Node.js/TypeScript y PostgreSQL como fuente central de verdad. SQLite funciona
 únicamente como caché y outbox offline en cada dispositivo.
 
-Repositorio canónico: `brendarlara17-ui/Proyecto-FALCON`.
+Repositorio principal de colaboración:
+[`AraHdzRey/falcon-app`](https://github.com/AraHdzRey/falcon-app).
+
+Las fases se mantienen separadas:
+
+- Fase 0.9: `integration/local-api-login`.
+- Fase 1.0: `feature/database-dev-seed`, descendiente de Fase 0.9.
 
 ## Fases implementadas
 
@@ -27,5 +33,5 @@ esquema y los datos sintéticos sin copiar una instalación PostgreSQL.
 - [Escenario resumido de sincronización A/B/C](docs/testing/THREE_DEVICE_SYNC_TEST.md)
 - [Prueba de recuperación offline](docs/testing/OFFLINE_RECOVERY_TEST.md)
 
-Mientras la Fase 0.9 no se integre en `main`, el estado conjunto de las fases
-0.9 y 1.0 se encuentra en `feature/database-dev-seed`.
+Para probar la integración de API y base reproducible se usa Fase 1.0 porque
+hereda Fase 0.9; esto no convierte ambas fases en una sola rama.

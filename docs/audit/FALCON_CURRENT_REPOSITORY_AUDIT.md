@@ -2,6 +2,10 @@
 
 Fecha de corte: 14 de noviembre de 2026.
 
+> Actualización de colaboración, 15 de noviembre de 2026:
+> `AraHdzRey/falcon-app` pasa a ser el repositorio principal. La tabla siguiente
+> conserva la clasificación histórica vigente en la fecha de corte.
+
 ## Alcance y fuentes
 
 | Repositorio | Rama/commit auditado | Clasificación |

@@ -162,7 +162,7 @@ confirmarse `NODE_ENV` y `DB_NAME` antes de ejecutarla.
 Mientras el PR de Fase 1.0 no esté integrado:
 
 ```powershell
-git clone https://github.com/brendarlara17-ui/Proyecto-FALCON.git
+git clone https://github.com/AraHdzRey/falcon-app.git
 cd Proyecto-FALCON
 git switch feature/database-dev-seed
 ```

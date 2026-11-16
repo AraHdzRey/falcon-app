@@ -134,7 +134,7 @@ implementación TypeScript única; no se mantuvieron dos backends paralelos.
 Mientras esta fase no esté integrada en `main`:
 
 ```powershell
-git clone https://github.com/brendarlara17-ui/Proyecto-FALCON.git
+git clone https://github.com/AraHdzRey/falcon-app.git
 cd Proyecto-FALCON
 git switch integration/local-api-login
 
