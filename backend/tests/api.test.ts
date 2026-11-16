@@ -112,6 +112,7 @@ const complaintView: ComplaintView = {
 
 class FakeModulesRepository implements ModulesRepository {
   complaintActor: SessionUser | null | undefined;
+  deactivationStatus: 'ok' | 'self_action' | 'last_admin' = 'ok';
 
   async listDirectory(): Promise<CollaboratorView[]> {
     return [collaboratorView];
@@ -140,6 +141,9 @@ class FakeModulesRepository implements ModulesRepository {
     };
   }
   async deactivateCollaborator() {
+    if (this.deactivationStatus !== 'ok') {
+      return { status: this.deactivationStatus } as const;
+    }
     return {
       status: 'ok' as const,
       value: { ...collaboratorView, active: false, userActive: false },
@@ -248,6 +252,17 @@ test('GET /health responde 200', async () => {
   const response = await request(app).get('/health');
   assert.equal(response.status, 200);
   assert.equal(response.body.status, 'ok');
+});
+
+test('OpenAPI y Swagger exponen el contrato unificado', async () => {
+  const { app } = setup();
+  const contract = await request(app).get('/openapi.json');
+  assert.equal(contract.status, 200);
+  assert.equal(contract.body.info.version, '1.1.0');
+  assert.ok(Object.keys(contract.body.paths).length >= 20);
+  assert.ok(contract.body.paths['/directory']);
+  assert.ok(contract.body.paths['/complaints/track/{folio}']);
+  assert.equal((await request(app).get('/docs/')).status, 200);
 });
 
 test('POST /auth/login acepta credenciales válidas', async () => {
@@ -427,6 +442,19 @@ test('administrador puede crear, editar, desactivar y reactivar colaborador', as
     .set(authorization)).status, 200);
   assert.equal((await request(app).patch('/admin/collaborators/20/reactivate')
     .set(authorization)).status, 200);
+});
+
+test('administración bloquea auto-desactivación y último administrador', async () => {
+  const { app, repository, modulesRepository, tokens } = setup();
+  repository.sessionUser = { ...collaborator, role: 'administrador' };
+  const token = tokens.sign({ userId: 10, tokenVersion: 0 });
+  const authorization = { Authorization: `Bearer ${token}` };
+  modulesRepository.deactivationStatus = 'self_action';
+  assert.equal((await request(app).patch('/admin/collaborators/20/deactivate')
+    .set(authorization)).status, 409);
+  modulesRepository.deactivationStatus = 'last_admin';
+  assert.equal((await request(app).patch('/admin/collaborators/21/deactivate')
+    .set(authorization)).status, 409);
 });
 
 test('noticias requieren autenticación y autorización editorial', async () => {
