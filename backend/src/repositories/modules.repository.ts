@@ -180,7 +180,11 @@ const countActiveAdministrators = async (client: PoolClient): Promise<number> =>
 };
 
 const generateFolio = (): string => {
-  const code = randomBytes(4).toString('hex').toUpperCase();
+  const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const code = Array.from(
+    randomBytes(8),
+    (value) => alphabet[value & 31],
+  ).join('');
   return `FLC-${code.slice(0, 4)}-${code.slice(4)}`;
 };
 
