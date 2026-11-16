@@ -23,7 +23,8 @@ esquema y los datos sintéticos sin copiar una instalación PostgreSQL.
 - [Referencia de la API](docs/api/README_API_LOCAL_FALCON.md)
 - [Base de datos, migraciones y seeds](docs/database/README_DATABASE.md)
 - [Preparación del entorno local](docs/environment/LOCAL_DEVELOPMENT_SETUP.md)
-- [Prueba física con tres dispositivos](docs/testing/THREE_DEVICE_SYNC_TEST.md)
+- [Prueba física con tres dispositivos](docs/testing/README_THREE_DEVICE_PHYSICAL_TEST.md)
+- [Escenario resumido de sincronización A/B/C](docs/testing/THREE_DEVICE_SYNC_TEST.md)
 - [Prueba de recuperación offline](docs/testing/OFFLINE_RECOVERY_TEST.md)
 
 Mientras la Fase 0.9 no se integre en `main`, el estado conjunto de las fases

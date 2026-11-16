@@ -7,7 +7,7 @@
 
 ## Pendientes confirmados
 
-- prueba física A/B/C;
+- [prueba física A/B/C](../testing/README_THREE_DEVICE_PHYSICAL_TEST.md);
 - reapertura y persistencia offline en teléfonos reales;
 - convergencia física entre tres dispositivos;
 - módulos funcionales posteriores que sean formalmente aprobados.
