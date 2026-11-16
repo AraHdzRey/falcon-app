@@ -214,7 +214,7 @@ test(
     await request(app)
       .patch(`/admin/complaints/${identifiedRow.rows[0]!.id}/status`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ statusCode: 'EN_PROCESO' })
+      .send({ statusCode: 'UNDER_REVIEW' })
       .expect(200);
     await request(app)
       .get('/admin/audit?page=1&pageSize=100')

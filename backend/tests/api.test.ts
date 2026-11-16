@@ -100,7 +100,7 @@ const complaintView: ComplaintView = {
   id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
   folio: 'FLC-ABCD-1234',
   category: { code: 'PROCESOS', name: 'Procesos' },
-  status: { code: 'RECIBIDA', name: 'Recibida' },
+  status: { code: 'RECEIVED', name: 'Recibida' },
   anonymous: true,
   subject: 'Caso sintético',
   description: 'Descripción sintética',
@@ -208,7 +208,7 @@ class FakeModulesRepository implements ModulesRepository {
       status: 'ok' as const,
       value: {
         ...complaintView,
-        status: { code: 'EN_PROCESO', name: 'En proceso' },
+        status: { code: 'UNDER_REVIEW', name: 'En revisión' },
       },
     };
   }
@@ -497,7 +497,7 @@ test('administración de quejas valida rol y permite cambio de estado', async ()
   assert.equal((await request(app)
     .patch(`/admin/complaints/${complaintView.id}/status`)
     .set('Authorization', `Bearer ${token}`)
-    .send({ statusCode: 'EN_PROCESO' })).status, 200);
+    .send({ statusCode: 'UNDER_REVIEW' })).status, 200);
 });
 
 test('auditor puede consultar bitácora paginada y colaborador no', async () => {

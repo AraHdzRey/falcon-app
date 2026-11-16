@@ -529,7 +529,7 @@ export const createModulesRepository = (pool: Pool): ModulesRepository => ({
           [input.categoryCode],
         );
         const status = await client.query<{ id: number }>(
-          `SELECT id::int FROM estados_queja WHERE codigo = 'RECIBIDA'`,
+          `SELECT id::int FROM estados_queja WHERE codigo = 'RECEIVED'`,
         );
         if (!category.rows[0] || !status.rows[0]) {
           return { status: 'conflict' } as const;
@@ -560,7 +560,7 @@ export const createModulesRepository = (pool: Pool): ModulesRepository => ({
           details: {
             anonymous: input.anonymous,
             category: input.categoryCode,
-            status: 'RECIBIDA',
+            status: 'RECEIVED',
           },
         });
         return { status: 'ok', value: { id, folio } } as const;
@@ -615,7 +615,7 @@ export const createModulesRepository = (pool: Pool): ModulesRepository => ({
       await client.query(
         `UPDATE quejas
          SET estado_id = $2, actualizado_en = NOW(),
-             resuelto_en = CASE WHEN $3 = 'RESUELTA' THEN NOW() ELSE NULL END
+             resuelto_en = CASE WHEN $3 = 'RESOLVED' THEN NOW() ELSE NULL END
          WHERE id = $1`,
         [id, status.rows[0].id, statusCode],
       );
