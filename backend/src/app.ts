@@ -4,15 +4,22 @@ import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
 import type { AuthRepository, HealthRepository } from './types/auth';
 import type { SyncRepository } from './types/sync';
+import type { ModulesRepository } from './types/modules';
 import type { TokenService } from './services/token.service';
 import { createAuthRouter } from './routes/auth.routes';
 import { openApiDocument } from './openapi';
 import { createSyncRouter } from './routes/sync.routes';
+import { createDirectoryRouter } from './routes/directory.routes';
+import { createAdminRouter } from './routes/admin.routes';
+import { createNewsRouter } from './routes/news.routes';
+import { createComplaintsRouter } from './routes/complaints.routes';
+import { createAuditRouter } from './routes/audit.routes';
 
 export interface AppDependencies {
   authRepository: AuthRepository;
   healthRepository: HealthRepository;
   syncRepository: SyncRepository;
+  modulesRepository: ModulesRepository;
   tokens: TokenService;
   corsOrigins?: string[];
 }
@@ -37,6 +44,41 @@ export const createApp = (dependencies: AppDependencies) => {
     }),
   );
   app.use(express.json({ limit: '32kb' }));
+  app.use(
+    createDirectoryRouter(
+      dependencies.authRepository,
+      dependencies.modulesRepository,
+      dependencies.tokens,
+    ),
+  );
+  app.use(
+    createAdminRouter(
+      dependencies.authRepository,
+      dependencies.modulesRepository,
+      dependencies.tokens,
+    ),
+  );
+  app.use(
+    createNewsRouter(
+      dependencies.authRepository,
+      dependencies.modulesRepository,
+      dependencies.tokens,
+    ),
+  );
+  app.use(
+    createComplaintsRouter(
+      dependencies.authRepository,
+      dependencies.modulesRepository,
+      dependencies.tokens,
+    ),
+  );
+  app.use(
+    createAuditRouter(
+      dependencies.authRepository,
+      dependencies.modulesRepository,
+      dependencies.tokens,
+    ),
+  );
 
   app.get('/health', (_req, res) => {
     res.status(200).json({

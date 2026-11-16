@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import { verifyPassword } from '../services/password.service';
 import type {
@@ -93,7 +94,16 @@ export const createPostgresRepository = (
     if (!row || !valid) return null;
 
     const user = toSessionUser(row);
-    return user ? { user } : null;
+    if (!user) return null;
+    if (user.role === 'administrador') {
+      await pool.query(
+        `INSERT INTO auditoria_eventos
+           (id, evento, actor_usuario_id, entidad, entidad_id, detalles)
+         VALUES ($1, 'ADMIN_LOGIN', $2, 'session', $2::text, $3::jsonb)`,
+        [randomUUID(), user.userId, JSON.stringify({ role: user.role })],
+      );
+    }
+    return { user };
   },
 
   async getSessionUser(
