@@ -1,6 +1,6 @@
 {
   "name": "falcon-local-api",
-  "version": "0.8.0",
+  "version": "1.1.0",
   "description": "API REST local para el piloto académico FALCÓN",
   "main": "dist/server.js",
   "scripts": {
