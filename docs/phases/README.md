@@ -15,3 +15,7 @@
 
 La Fase 1.1 mantiene un backend único y reutiliza el esquema publicado en las
 migraciones 001, 002 y 003.
+
+## Colaboración
+
+- [Guía de adaptación de bases de datos y módulos](../collaboration/README_DATABASE_ADAPTATION_GUIDE.md)

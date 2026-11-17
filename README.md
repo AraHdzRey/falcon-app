@@ -31,6 +31,7 @@ esquema y los datos sintéticos sin copiar una instalación PostgreSQL.
 - [Referencia de la API](docs/api/README_API_LOCAL_FALCON.md)
 - [Compatibilidad de API heredada](docs/api/LEGACY_API_COMPATIBILITY.md)
 - [Base de datos, migraciones y seeds](docs/database/README_DATABASE.md)
+- [Guía de adaptación para colaboradores](docs/collaboration/README_DATABASE_ADAPTATION_GUIDE.md)
 - [Preparación del entorno local](docs/environment/LOCAL_DEVELOPMENT_SETUP.md)
 - [Prueba física con tres dispositivos](docs/testing/README_THREE_DEVICE_PHYSICAL_TEST.md)
 - [Escenario resumido de sincronización A/B/C](docs/testing/THREE_DEVICE_SYNC_TEST.md)
