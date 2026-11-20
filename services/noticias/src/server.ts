@@ -1,34 +1,40 @@
-import express from 'express';
+// Debe ser el primer import: carga .env antes que el resto de módulos.
+import 'dotenv/config';
 
-const app = express();
+import { app } from './app';
+import { obtenerJwtSecret } from './services/token.service';
 
-app.disable('x-powered-by');
+const HOSTS_PERMITIDOS = ['127.0.0.1', '0.0.0.0'];
 
-const puerto = Number(process.env.NOTICIAS_PORT ?? '3101');
+const iniciar = (): void => {
+  const puerto = Number(process.env.NOTICIAS_PORT ?? '3101');
 
-if (
-  !Number.isInteger(puerto) ||
-  puerto < 1 ||
-  puerto > 65535
-) {
-  throw new Error('NOTICIAS_PORT debe ser un puerto valido');
-}
+  if (!Number.isInteger(puerto) || puerto < 1 || puerto > 65535) {
+    throw new Error('NOTICIAS_PORT debe ser un puerto valido');
+  }
 
-const host =
-  process.env.NOTICIAS_HOST === '0.0.0.0'
-    ? '0.0.0.0'
-    : '127.0.0.1';
+  const host = process.env.NOTICIAS_HOST ?? '127.0.0.1';
 
-app.get('/health', (_req, res) => {
-  res.status(200).json({
-    status: 'ok',
-    service: 'noticias',
-    message: 'Microservicio de Noticias activo',
+  if (!HOSTS_PERMITIDOS.includes(host)) {
+    throw new Error(
+      `NOTICIAS_HOST debe ser uno de: ${HOSTS_PERMITIDOS.join(', ')}`
+    );
+  }
+
+  // Falla de inmediato si JWT_SECRET falta o es demasiado corta.
+  obtenerJwtSecret();
+
+  app.listen(puerto, host, () => {
+    console.log(`Microservicio Noticias en http://${host}:${puerto}`);
   });
-});
+};
 
-app.listen(puerto, host, () => {
-  console.log(
-    `Microservicio Noticias en http://${host}:${puerto}`
+try {
+  iniciar();
+} catch (error) {
+  console.error(
+    'ERROR de configuración:',
+    error instanceof Error ? error.message : error
   );
-});
+  process.exit(1);
+}
