@@ -3,6 +3,7 @@ import { createPool } from './config/database';
 import { loadConfig } from './config/env';
 import { createPostgresRepository } from './repositories/postgres.repository';
 import { createModulesRepository } from './repositories/modules.repository';
+import { createPostgresDirectoryRepository } from './infrastructure/postgres/directory.repository';
 import { createTokenService } from './services/token.service';
 
 const config = loadConfig();
@@ -14,6 +15,7 @@ const app = createApp({
   healthRepository: repository,
   syncRepository: repository,
   modulesRepository,
+  directoryRepository: createPostgresDirectoryRepository(modulesRepository),
   tokens: createTokenService(config.jwtSecret),
   corsOrigins: config.corsOrigins,
 });

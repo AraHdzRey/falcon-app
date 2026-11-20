@@ -539,3 +539,101 @@ test('auditor puede consultar bitácora paginada y colaborador no', async () => 
   assert.equal(response.status, 200);
   assert.equal(response.body.total, 1);
 });
+test('repositorio alternativo conserva el contrato HTTP', async () => {
+  const { repository, modulesRepository, tokens } = setup();
+
+  const collaborator = {
+    id: 9001,
+    employeeNumber: 'FALCON-TI-TEST',
+    name: 'Colaborador de prueba por capas',
+    email: null,
+    position: 'Soporte',
+    area: 'TI',
+    active: true,
+    userActive: true,
+    role: 'colaborador' as const,
+    updatedAt: '2026-11-19T00:00:00.000Z',
+  };
+
+  const calls: Array<{
+    operation: string;
+    parameters: unknown;
+  }> = [];
+
+  const app = createApp({
+    authRepository: repository,
+    healthRepository: repository,
+    syncRepository: repository,
+    modulesRepository,
+    tokens,
+    corsOrigins: ['http://localhost:8081'],
+
+    directoryRepository: {
+      async listDirectory(filters) {
+        calls.push({
+          operation: 'directory',
+          parameters: filters,
+        });
+
+        return [collaborator];
+      },
+
+      async getProfile(userId) {
+        calls.push({
+          operation: 'profile',
+          parameters: userId,
+        });
+
+        return {
+          ...collaborator,
+          userId,
+        };
+      },
+    },
+  });
+
+  const token = tokens.sign({
+    userId: 10,
+    tokenVersion: 0,
+  });
+
+  const directoryResponse = await request(app)
+    .get('/directory?search=Colaborador&area=TI')
+    .set('Authorization', `Bearer ${token}`);
+
+  assert.equal(directoryResponse.status, 200);
+
+  assert.deepEqual(directoryResponse.body, {
+    status: 'ok',
+    items: [collaborator],
+    total: 1,
+  });
+
+  const profileResponse = await request(app)
+    .get('/profile/me')
+    .set('Authorization', `Bearer ${token}`);
+
+  assert.equal(profileResponse.status, 200);
+
+  assert.deepEqual(profileResponse.body, {
+    status: 'ok',
+    profile: {
+      ...collaborator,
+      userId: 10,
+    },
+  });
+
+  assert.deepEqual(calls, [
+    {
+      operation: 'directory',
+      parameters: {
+        search: 'Colaborador',
+        area: 'TI',
+      },
+    },
+    {
+      operation: 'profile',
+      parameters: 10,
+    },
+  ]);
+});

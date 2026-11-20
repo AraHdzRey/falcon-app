@@ -5,6 +5,7 @@ import swaggerUi from 'swagger-ui-express';
 import type { AuthRepository, HealthRepository } from './types/auth';
 import type { SyncRepository } from './types/sync';
 import type { ModulesRepository } from './types/modules';
+import type { DirectoryRepository } from './domain/directory/directory.repository';
 import type { TokenService } from './services/token.service';
 import { createAuthRouter } from './routes/auth.routes';
 import { openApiDocument } from './openapi';
@@ -20,6 +21,7 @@ export interface AppDependencies {
   healthRepository: HealthRepository;
   syncRepository: SyncRepository;
   modulesRepository: ModulesRepository;
+  directoryRepository?: DirectoryRepository;
   tokens: TokenService;
   corsOrigins?: string[];
 }
@@ -47,7 +49,7 @@ export const createApp = (dependencies: AppDependencies) => {
   app.use(
     createDirectoryRouter(
       dependencies.authRepository,
-      dependencies.modulesRepository,
+      dependencies.directoryRepository ?? dependencies.modulesRepository,
       dependencies.tokens,
     ),
   );
