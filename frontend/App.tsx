@@ -18,7 +18,7 @@ import DirectorioScreen from './src/screens/directorio.screen';
 import PerfilColaboradorScreen from './src/screens/perfil-colaborador.screen';
 import NoticiasScreen from './src/screens/noticias.screen';
 import DetalleNoticiaScreen from './src/screens/detalle-noticia.screen';
-import type { NewsItem } from './src/sync/types';
+import type { NewsItem , LocalDashboard } from './src/sync/types';
 import {
   cacheProfile,
   initializeDatabase,
@@ -32,7 +32,6 @@ import {
   type StoredSession,
 } from './src/storage/session';
 import { runSynchronization } from './src/sync/engine';
-import type { LocalDashboard } from './src/sync/types';
 
 type ConnectivityState = 'initializing' | 'online' | 'offline' | 'syncing';
 
@@ -135,7 +134,9 @@ export default function App() {
 
   useEffect(() => {
     if (!session) return undefined;
-    void synchronize(session);
+    const initialTimer = setTimeout(() => {
+      void synchronize(session);
+    }, 0);
     const timer = setInterval(() => void synchronize(session), 4_000);
     const expiryTimer = setTimeout(() => {
       if (sessionRef.current !== session) return;
@@ -153,6 +154,7 @@ export default function App() {
       );
     }, Math.max(0, session.expiresAt - Date.now()));
     return () => {
+      clearTimeout(initialTimer);
       clearInterval(timer);
       clearTimeout(expiryTimer);
     };
