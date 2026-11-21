@@ -49,26 +49,41 @@ export default function App() {
   const [sessionMessage, setSessionMessage] = useState('');
   const [draftTitle, setDraftTitle] = useState('');
   const [draftBody, setDraftBody] = useState('');
-  const syncInProgress = useRef(false);
+  const syncInProgress = useRef(new Set<number>());
+  const sessionRef = useRef<StoredSession | null>(null);
+  const logoutInProgress = useRef(false);
 
-  const refreshLocal = useCallback(async () => {
-    setDashboard(await loadLocalDashboard());
+  const refreshLocal = useCallback(async (activeSession: StoredSession) => {
+    const local = await loadLocalDashboard(activeSession.user.id);
+    if (sessionRef.current === activeSession) {
+      setDashboard(local);
+    }
   }, []);
 
   const synchronize = useCallback(
     async (activeSession: StoredSession) => {
-      if (syncInProgress.current) return;
-      syncInProgress.current = true;
+      const userId = activeSession.user.id;
+      const isCurrent = () =>
+        sessionRef.current === activeSession &&
+        sessionRef.current?.user.id === userId;
+
+      if (!isCurrent() || syncInProgress.current.has(userId)) return;
+
+      syncInProgress.current.add(userId);
       setConnectivity('syncing');
+
       try {
-        await runSynchronization(activeSession.token);
-        await refreshLocal();
-        setConnectivity('online');
+        await runSynchronization(activeSession.token, userId, isCurrent);
+        if (!isCurrent()) return;
+        await refreshLocal(activeSession);
+        if (isCurrent()) setConnectivity('online');
       } catch {
-        await refreshLocal();
-        setConnectivity('offline');
+        if (isCurrent()) {
+          await refreshLocal(activeSession);
+          if (isCurrent()) setConnectivity('offline');
+        }
       } finally {
-        syncInProgress.current = false;
+        syncInProgress.current.delete(userId);
       }
     },
     [refreshLocal],
@@ -78,15 +93,18 @@ export default function App() {
     let active = true;
     const initialize = async () => {
       try {
-        await initializeDatabase();
-        const local = await loadLocalDashboard();
         const stored = await loadSecureSession();
         if (!active) return;
-        setDashboard(local);
         setConnectivity('offline');
         if (stored.session) {
+          await initializeDatabase(stored.session.user.id);
+          const local = await loadLocalDashboard(stored.session.user.id);
+          if (!active) return;
+          sessionRef.current = stored.session;
+          setDashboard(local);
           setSession(stored.session);
         } else if (stored.expired) {
+          setDashboard(EMPTY_DASHBOARD);
           setSessionMessage(
             'La sesión local expiró. Se requiere conexión para volver a iniciar sesión.',
           );
@@ -109,6 +127,9 @@ export default function App() {
     void synchronize(session);
     const timer = setInterval(() => void synchronize(session), 4_000);
     const expiryTimer = setTimeout(() => {
+      if (sessionRef.current !== session) return;
+      sessionRef.current = null;
+      setDashboard(EMPTY_DASHBOARD);
       void clearSecureSession();
       setSession(null);
       setConnectivity('offline');
@@ -123,6 +144,7 @@ export default function App() {
   }, [session, synchronize]);
 
   const handleLogin = async () => {
+    if (logoutInProgress.current) return;
     if (!employeeId.trim() || !password) {
       Alert.alert('Campos requeridos', 'Escribe tu ID de empleado y contraseña.');
       return;
@@ -131,12 +153,14 @@ export default function App() {
     try {
       const authenticated = await login(employeeId, password);
       const user = await getMe(authenticated.token);
+      await initializeDatabase(user.id);
       const stored = await saveSecureSession({ ...authenticated, user });
-      await cacheProfile(user, stored.expiresAt);
+      await cacheProfile(user.id, user, stored.expiresAt);
+      sessionRef.current = stored;
       setSession(stored);
       setPassword('');
       setSessionMessage('');
-      await refreshLocal();
+      await refreshLocal(stored);
       await synchronize(stored);
     } catch (error) {
       setConnectivity('offline');
@@ -148,7 +172,13 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    if (!session) return;
+    if (!session || logoutInProgress.current) return;
+    logoutInProgress.current = true;
+    sessionRef.current = null;
+    setSession(null);
+    setDashboard(EMPTY_DASHBOARD);
+    setDraftTitle('');
+    setDraftBody('');
     setConnectivity('syncing');
     try {
       await logout(session.token);
@@ -156,6 +186,7 @@ export default function App() {
       // El cierre local prevalece; el token corto expirará en el servidor.
     } finally {
       await clearSecureSession();
+      logoutInProgress.current = false;
       setSession(null);
       setConnectivity('offline');
       setSessionMessage('Sesión cerrada en este dispositivo.');
@@ -169,11 +200,14 @@ export default function App() {
       Alert.alert('Datos requeridos', 'Escribe título y contenido de prueba.');
       return;
     }
-    await queueDemoNews(title, body);
+    if (!session || sessionRef.current !== session ||
+        !canCreateNews) return;
+
+    await queueDemoNews(session.user.id, title, body);
     setDraftTitle('');
     setDraftBody('');
-    await refreshLocal();
-    if (session) void synchronize(session);
+    await refreshLocal(session);
+    void synchronize(session);
   };
 
   const statusLabel =

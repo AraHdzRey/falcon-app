@@ -1,5 +1,6 @@
 import * as Crypto from 'expo-crypto';
 import * as SQLite from 'expo-sqlite';
+import { assertSnapshotOwner, databaseNameForUser } from './account-scope';
 import type { FalconUser } from '../api/client';
 import type {
   LocalDashboard,
@@ -9,12 +10,20 @@ import type {
   SyncSnapshot,
 } from '../sync/types';
 
-const DATABASE_NAME = 'falcon_local.db';
-let databasePromise: Promise<SQLite.SQLiteDatabase> | null = null;
+const databases = new Map<number, Promise<SQLite.SQLiteDatabase>>();
 
-const database = (): Promise<SQLite.SQLiteDatabase> => {
-  databasePromise ??= SQLite.openDatabaseAsync(DATABASE_NAME);
-  return databasePromise;
+const database = (userId: number): Promise<SQLite.SQLiteDatabase> => {
+  const name = databaseNameForUser(userId);
+  const existing = databases.get(userId);
+  if (existing) return existing;
+
+  const opening = SQLite.openDatabaseAsync(name).catch((error: unknown) => {
+    databases.delete(userId);
+    throw error;
+  });
+
+  databases.set(userId, opening);
+  return opening;
 };
 
 interface MetadataRow {
@@ -30,8 +39,8 @@ interface OutboxRow {
   base_version: number | null;
 }
 
-export const initializeDatabase = async (): Promise<void> => {
-  const db = await database();
+export const initializeDatabase = async (userId: number): Promise<void> => {
+  const db = await database(userId);
   await db.execAsync(`
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = ON;
@@ -76,8 +85,8 @@ export const initializeDatabase = async (): Promise<void> => {
   `);
 };
 
-const getMetadata = async (key: string): Promise<string | null> => {
-  const db = await database();
+const getMetadata = async (userId: number, key: string): Promise<string | null> => {
+  const db = await database(userId);
   const row = await db.getFirstAsync<MetadataRow>(
     'SELECT value FROM sync_metadata WHERE key = ?',
     key,
@@ -85,8 +94,8 @@ const getMetadata = async (key: string): Promise<string | null> => {
   return row?.value ?? null;
 };
 
-const setMetadata = async (key: string, value: string): Promise<void> => {
-  const db = await database();
+const setMetadata = async (userId: number, key: string, value: string): Promise<void> => {
+  const db = await database(userId);
   await db.runAsync(
     `INSERT INTO sync_metadata (key, value) VALUES (?, ?)
      ON CONFLICT (key) DO UPDATE SET value = excluded.value`,
@@ -95,19 +104,21 @@ const setMetadata = async (key: string, value: string): Promise<void> => {
   );
 };
 
-export const getOrCreateDeviceId = async (): Promise<string> => {
-  const existing = await getMetadata('device_id');
+export const getOrCreateDeviceId = async (userId: number): Promise<string> => {
+  const existing = await getMetadata(userId, 'device_id');
   if (existing) return existing;
   const value = Crypto.randomUUID();
-  await setMetadata('device_id', value);
+  await setMetadata(userId, 'device_id', value);
   return value;
 };
 
 export const cacheProfile = async (
+  userId: number,
   profile: FalconUser,
   expiresAt: number,
 ): Promise<void> => {
-  const db = await database();
+  assertSnapshotOwner(userId, profile.id);
+  const db = await database(userId);
   await db.runAsync(
     `INSERT INTO cached_profile (id, data, expires_at, updated_at)
      VALUES (1, ?, ?, ?)
@@ -122,11 +133,12 @@ export const cacheProfile = async (
 };
 
 export const queueDemoNews = async (
+  userId: number,
   title: string,
   body: string,
 ): Promise<NewsItem> => {
-  const db = await database();
-  const deviceId = await getOrCreateDeviceId();
+  const db = await database(userId);
+  const deviceId = await getOrCreateDeviceId(userId);
   const newsId = Crypto.randomUUID();
   const operationId = Crypto.randomUUID();
   const updatedAt = new Date().toISOString();
@@ -154,8 +166,8 @@ export const queueDemoNews = async (
   return { id: newsId, title, body, version: 0, updatedAt, pending: true };
 };
 
-export const getPendingOperations = async (): Promise<OutboxOperation[]> => {
-  const db = await database();
+export const getPendingOperations = async (userId: number): Promise<OutboxOperation[]> => {
+  const db = await database(userId);
   const rows = await db.getAllAsync<OutboxRow>(
     `SELECT id, device_id, entity, operation, payload, base_version
      FROM outbox WHERE sync_status = 'pending'
@@ -171,16 +183,17 @@ export const getPendingOperations = async (): Promise<OutboxOperation[]> => {
   }));
 };
 
-export const getLocalVersion = async (): Promise<number> => {
-  const value = await getMetadata('server_version');
+export const getLocalVersion = async (userId: number): Promise<number> => {
+  const value = await getMetadata(userId, 'server_version');
   const version = Number(value ?? 0);
   return Number.isSafeInteger(version) && version >= 0 ? version : 0;
 };
 
 export const applyOperationResults = async (
+  userId: number,
   results: OperationResult[],
 ): Promise<void> => {
-  const db = await database();
+  const db = await database(userId);
   await db.withExclusiveTransactionAsync(async (transaction) => {
     for (const result of results) {
       const operation = await transaction.getFirstAsync<OutboxRow>(
@@ -229,9 +242,11 @@ export const applyOperationResults = async (
 };
 
 export const applySyncSnapshot = async (
+  userId: number,
   snapshot: SyncSnapshot,
 ): Promise<void> => {
-  const db = await database();
+  assertSnapshotOwner(userId, snapshot.profile.id);
+  const db = await database(userId);
   const now = new Date().toISOString();
   await db.withExclusiveTransactionAsync(async (transaction) => {
     await transaction.runAsync(
@@ -283,8 +298,8 @@ export const applySyncSnapshot = async (
   });
 };
 
-export const markPendingSyncFailure = async (message: string): Promise<void> => {
-  const db = await database();
+export const markPendingSyncFailure = async (userId: number, message: string): Promise<void> => {
+  const db = await database(userId);
   await db.runAsync(
     `UPDATE outbox SET retry_count = retry_count + 1, last_error = ?
      WHERE sync_status = 'pending'`,
@@ -292,8 +307,8 @@ export const markPendingSyncFailure = async (message: string): Promise<void> => 
   );
 };
 
-export const loadLocalDashboard = async (): Promise<LocalDashboard> => {
-  const db = await database();
+export const loadLocalDashboard = async (userId: number): Promise<LocalDashboard> => {
+  const db = await database(userId);
   const [profileRow, directory, news, pendingRow, conflictRow, lastSync] =
     await Promise.all([
       db.getFirstAsync<{ data: string }>('SELECT data FROM cached_profile WHERE id = 1'),
@@ -318,7 +333,7 @@ export const loadLocalDashboard = async (): Promise<LocalDashboard> => {
       db.getFirstAsync<{ total: number }>(
         "SELECT COUNT(*) AS total FROM outbox WHERE sync_status = 'conflict'",
       ),
-      getMetadata('last_sync'),
+      getMetadata(userId, 'last_sync'),
     ]);
   return {
     profile: profileRow ? (JSON.parse(profileRow.data) as FalconUser) : null,
