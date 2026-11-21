@@ -1,8 +1,8 @@
 # FALCÓN — Estado técnico e integración del equipo
 
-**Documento de coordinación técnica · 21 de noviembre de 2026**  
-**Responsable de este avance:** Ara  
-**Proyecto:** FALCÓN, aplicación para personal con frontend Expo/React Native, API Node/Express/TypeScript, PostgreSQL y almacenamiento offline SQLite.  
+**Documento de coordinación técnica · 21 de noviembre de 2026**
+**Responsable de este avance:** Ara
+**Proyecto:** FALCÓN, aplicación para personal con frontend Expo/React Native, API Node/Express/TypeScript, PostgreSQL y almacenamiento offline SQLite.
 **Entrega académica prevista:** 24 de noviembre de 2026.
 
 > **Importante:** este README describe el estado comprobado en la máquina de Ara y el plan propuesto para integrar el trabajo del equipo. **No significa que todo esté fusionado, publicado ni probado de extremo a extremo.** Actualizarlo después de cada integración y ejecución verificable.

@@ -1,3 +1,4 @@
+import type { DirectoryApiEntry } from '../features/directory/model';
 import type {
   OperationResult,
   OutboxOperation,
@@ -181,4 +182,21 @@ export const pullSyncChanges = async (
     throw new Error('La API devolvió una sincronización inválida.');
   }
   return body as SyncSnapshot;
+};
+
+/** Listado autenticado de la API unificada. No utiliza datos ficticios. */
+export const listDirectory = async (token: string): Promise<DirectoryApiEntry[]> => {
+  const response = await apiFetch(`${apiBaseUrl()}/directory`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const body = await readJson(response);
+  if (!response.ok || typeof body !== 'object' || body === null ||
+      !('items' in body) || !Array.isArray(body.items) ||
+      !body.items.every((item: unknown) =>
+        typeof item === 'object' && item !== null &&
+        'id' in item && typeof item.id === 'number' &&
+        'name' in item && typeof item.name === 'string')) {
+    throw new Error('No se pudo cargar el Directorio desde la API.');
+  }
+  return body.items as DirectoryApiEntry[];
 };

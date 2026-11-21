@@ -12,7 +12,13 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { getMe, login, logout } from './src/api/client';
+import { getMe, login, logout, listDirectory } from './src/api/client';
+import { adaptDirectory, type Colaborador } from './src/features/directory/model';
+import DirectorioScreen from './src/screens/directorio.screen';
+import PerfilColaboradorScreen from './src/screens/perfil-colaborador.screen';
+import NoticiasScreen from './src/screens/noticias.screen';
+import DetalleNoticiaScreen from './src/screens/detalle-noticia.screen';
+import type { NewsItem } from './src/sync/types';
 import {
   cacheProfile,
   initializeDatabase,
@@ -52,6 +58,11 @@ export default function App() {
   const syncInProgress = useRef(new Set<number>());
   const sessionRef = useRef<StoredSession | null>(null);
   const logoutInProgress = useRef(false);
+  const [panel, setPanel] = useState<'inicio' | 'directorio' | 'perfil' | 'noticias' | 'noticia'>('inicio');
+  const [directoryPeople, setDirectoryPeople] = useState<Colaborador[]>([]);
+  const [directoryOrigin, setDirectoryOrigin] = useState<'api' | 'cache'>('cache');
+  const [selectedPerson, setSelectedPerson] = useState<Colaborador | null>(null);
+  const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
 
   const refreshLocal = useCallback(async (activeSession: StoredSession) => {
     const local = await loadLocalDashboard(activeSession.user.id);
@@ -129,6 +140,10 @@ export default function App() {
     const expiryTimer = setTimeout(() => {
       if (sessionRef.current !== session) return;
       sessionRef.current = null;
+      setPanel('inicio');
+      setDirectoryPeople([]);
+      setSelectedPerson(null);
+      setSelectedNews(null);
       setDashboard(EMPTY_DASHBOARD);
       void clearSecureSession();
       setSession(null);
@@ -157,6 +172,10 @@ export default function App() {
       const stored = await saveSecureSession({ ...authenticated, user });
       await cacheProfile(user.id, user, stored.expiresAt);
       sessionRef.current = stored;
+      setPanel('inicio');
+      setDirectoryPeople([]);
+      setSelectedPerson(null);
+      setSelectedNews(null);
       setSession(stored);
       setPassword('');
       setSessionMessage('');
@@ -175,6 +194,10 @@ export default function App() {
     if (!session || logoutInProgress.current) return;
     logoutInProgress.current = true;
     sessionRef.current = null;
+    setPanel('inicio');
+    setDirectoryPeople([]);
+    setSelectedPerson(null);
+    setSelectedNews(null);
     setSession(null);
     setDashboard(EMPTY_DASHBOARD);
     setDraftTitle('');
@@ -210,6 +233,22 @@ export default function App() {
     void synchronize(session);
   };
 
+  const openDirectory = async (activeSession: StoredSession) => {
+    if (sessionRef.current !== activeSession) return;
+    setDirectoryPeople(adaptDirectory(dashboard.directory));
+    setDirectoryOrigin('cache');
+    setSelectedPerson(null);
+    setPanel('directorio');
+    try {
+      const items = await listDirectory(activeSession.token);
+      if (sessionRef.current !== activeSession) return;
+      setDirectoryPeople(adaptDirectory(items));
+      setDirectoryOrigin('api');
+    } catch {
+      // El Directorio continua disponible desde SQLite del usuario activo.
+    }
+  };
+
   const statusLabel =
     connectivity === 'online'
       ? 'EN LÍNEA'
@@ -238,7 +277,35 @@ export default function App() {
           accessibilityLabel="Identidad visual FALCÓN"
         />
 
-        {session ? (
+        {session && panel !== 'inicio' ? (
+          <View>
+            <TouchableOpacity style={styles.secondaryButton} onPress={() => setPanel('inicio')} accessibilityRole="button">
+              <Text style={styles.secondaryButtonText}>← Inicio</Text>
+            </TouchableOpacity>
+            {panel === 'directorio' ? (
+              <DirectorioScreen
+                colaboradores={directoryPeople}
+                origen={directoryOrigin}
+                onAbrirPerfil={(id) => {
+                  const person = directoryPeople.find(entry => entry.id === id);
+                  if (person) { setSelectedPerson(person); setPanel('perfil'); }
+                }}
+              />
+            ) : panel === 'perfil' && selectedPerson ? (
+              <PerfilColaboradorScreen colaborador={selectedPerson} onVolver={() => setPanel('directorio')} />
+            ) : panel === 'noticias' ? (
+              <NoticiasScreen
+                noticias={dashboard.news}
+                onAbrirNoticia={(id) => {
+                  const news = dashboard.news.find(item => item.id === id);
+                  if (news) { setSelectedNews(news); setPanel('noticia'); }
+                }}
+              />
+            ) : panel === 'noticia' && selectedNews ? (
+              <DetalleNoticiaScreen noticia={selectedNews} onVolver={() => setPanel('noticias')} />
+            ) : null}
+          </View>
+        ) : session ? (
           <>
             <View style={styles.card}>
               <Text style={styles.title}>Sesión activa</Text>
@@ -256,6 +323,12 @@ export default function App() {
                 <Text style={styles.metric}>Noticias: {dashboard.news.length}</Text>
                 <Text style={styles.metric}>Pendientes: {dashboard.pendingCount}</Text>
               </View>
+              <TouchableOpacity style={styles.secondaryButton} onPress={() => void openDirectory(session)} accessibilityRole="button">
+                <Text style={styles.secondaryButtonText}>Ver Directorio de colaboradores</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.secondaryButton} onPress={() => setPanel('noticias')} accessibilityRole="button">
+                <Text style={styles.secondaryButtonText}>Ver Noticias</Text>
+              </TouchableOpacity>
               {dashboard.conflictCount > 0 && (
                 <Text style={styles.conflict}>
                   Conflictos conservados para revisión: {dashboard.conflictCount}
