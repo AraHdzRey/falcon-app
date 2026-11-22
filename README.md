@@ -1,5 +1,11 @@
 # Proyecto FALCÓN
 
+> [!IMPORTANT]
+> ## [📘 LEER LA GUÍA OBLIGATORIA DEL EQUIPO FALCÓN](README_EQUIPO_FALCON.md)
+>
+> Antes de modificar código, base de datos, frontend o backend, todo integrante
+> debe leer esta guía completa.
+
 Aplicación móvil de gestión con frontend React Native/Expo, API REST local en
 Node.js/TypeScript y PostgreSQL como fuente central de verdad. SQLite funciona
 únicamente como caché y outbox offline en cada dispositivo.
