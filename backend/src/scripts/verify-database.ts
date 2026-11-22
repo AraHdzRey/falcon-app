@@ -2,15 +2,50 @@ import { createPool } from '../config/database';
 import { loadConfig } from '../config/env';
 import { assertMutableDatabase } from '../database/safety';
 
-const expectedCounts: Record<string, number> = {
-  roles: 7,
-  colaboradores: 20,
-  usuarios: 20,
-  categorias_queja: 6,
-  estados_queja: 4,
-  quejas: 20,
-  noticias: 10,
-  auditoria_eventos: 15,
+const expectedSeedCounts: Record<string, { expected: number; query: string }> = {
+  roles: {
+    expected: 7,
+    query: `SELECT COUNT(*)::text AS count FROM roles WHERE codigo IN
+      ('colaborador', 'capital_humano', 'responsable_quejas',
+       'editor_noticias', 'administrador', 'director', 'auditor')`,
+  },
+  colaboradores: {
+    expected: 20,
+    query: `SELECT COUNT(*)::text AS count FROM colaboradores
+      WHERE numero_empleado ~ '^TI(00[1-9]|01[0-9]|020)$'`,
+  },
+  usuarios: {
+    expected: 20,
+    query: `SELECT COUNT(*)::text AS count FROM usuarios u
+      JOIN colaboradores c ON c.id = u.colaborador_id
+      WHERE c.numero_empleado ~ '^TI(00[1-9]|01[0-9]|020)$'`,
+  },
+  categorias_queja: {
+    expected: 6,
+    query: `SELECT COUNT(*)::text AS count FROM categorias_queja
+      WHERE codigo IN ('AMBIENTE_LABORAL', 'PROCESOS', 'INFRAESTRUCTURA',
+                       'SEGURIDAD', 'SUGERENCIA', 'OTRO')`,
+  },
+  estados_queja: {
+    expected: 4,
+    query: `SELECT COUNT(*)::text AS count FROM estados_queja
+      WHERE codigo IN ('RECEIVED', 'UNDER_REVIEW', 'RESOLVED', 'CLOSED')`,
+  },
+  quejas: {
+    expected: 20,
+    query: `SELECT COUNT(*)::text AS count FROM quejas
+      WHERE id::text LIKE '10000000-0000-4000-8000-%'`,
+  },
+  noticias: {
+    expected: 10,
+    query: `SELECT COUNT(*)::text AS count FROM noticias
+      WHERE id::text LIKE '20000000-0000-4000-8000-%'`,
+  },
+  auditoria_eventos: {
+    expected: 15,
+    query: `SELECT COUNT(*)::text AS count FROM auditoria_eventos
+      WHERE id::text LIKE '30000000-0000-4000-8000-%'`,
+  },
 };
 
 const verify = async (): Promise<void> => {
@@ -18,15 +53,17 @@ const verify = async (): Promise<void> => {
   assertMutableDatabase(config);
   const pool = createPool(config);
   try {
-    const counts: Record<string, number> = {};
-    for (const [table, expected] of Object.entries(expectedCounts)) {
+    const seedCounts: Record<string, number> = {};
+    for (const [table, fixture] of Object.entries(expectedSeedCounts)) {
       const result = await pool.query<{ count: string }>(
-        `SELECT COUNT(*)::text AS count FROM ${table}`,
+        fixture.query,
       );
       const count = Number(result.rows[0]?.count ?? -1);
-      counts[table] = count;
-      if (count !== expected) {
-        throw new Error(`${table}: esperado ${expected}, obtenido ${count}`);
+      seedCounts[table] = count;
+      if (count !== fixture.expected) {
+        throw new Error(
+          `${table}: fixtures esperados ${fixture.expected}, obtenidos ${count}`,
+        );
       }
     }
 
@@ -39,7 +76,9 @@ const verify = async (): Promise<void> => {
       sensitive_audit_details: string;
     }>(`
       SELECT
-        (SELECT COUNT(*) FROM quejas WHERE anonima = TRUE)::text
+        (SELECT COUNT(*) FROM quejas
+          WHERE anonima = TRUE
+            AND id::text LIKE '10000000-0000-4000-8000-%')::text
           AS anonymous_complaints,
         (SELECT COUNT(*) FROM quejas
           WHERE anonima = TRUE AND remitente_usuario_id IS NOT NULL)::text
@@ -51,7 +90,8 @@ const verify = async (): Promise<void> => {
           WHERE q.anonima = TRUE AND a.actor_usuario_id IS NOT NULL)::text
           AS anonymous_audit_linked,
         (SELECT COUNT(*) FROM colaboradores
-          WHERE correo !~ '^[a-z0-9]+@example\\.test$')::text
+          WHERE numero_empleado ~ '^TI(00[1-9]|01[0-9]|020)$'
+            AND correo !~ '^[a-z0-9]+@example\\.test$')::text
           AS invalid_emails,
         (SELECT COUNT(*) FROM usuarios
           WHERE password_hash NOT LIKE '$2%')::text
@@ -84,7 +124,7 @@ const verify = async (): Promise<void> => {
       throw new Error('El esquema reproducible no debe contener CURP/RFC');
     }
 
-    console.log(JSON.stringify({ database: config.databaseUrl.database, counts,
+    console.log(JSON.stringify({ database: config.databaseUrl.database, seedCounts,
       anonymousComplaints: 5, privacyChecks: 'OK' }));
   } finally {
     await pool.end();
