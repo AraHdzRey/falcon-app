@@ -15,8 +15,9 @@
 > [!NOTE]
 > ## [🎬 GUÍA PARA LEVANTAR FALCÓN Y HACER UNA DEMOSTRACIÓN](README_DEMO_FALCON.md)
 >
-> Sigue este runbook para preparar PostgreSQL, API, Swagger, Expo y un teléfono
-> Android desde una computadora nueva o durante el arranque diario.
+> Sigue esta guía paso a paso para descargar el proyecto, preparar PostgreSQL,
+> levantar la API, ejecutar Expo, conectar un celular y realizar una
+> demostración completa de FALCÓN.
 
 Aplicación móvil de gestión con frontend React Native/Expo, API REST local en
 Node.js/TypeScript y PostgreSQL como fuente central de verdad. SQLite funciona

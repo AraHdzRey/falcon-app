@@ -356,11 +356,11 @@ Los documentos deben mantenerse alineados con el código realmente implementado.
 
 ---
 
-## ¿Necesitas levantar el proyecto para una demo?
+## ¿Necesitas levantar FALCÓN o hacer una demo?
 
-Sigue paso a paso:
+Sigue la guía:
 
-**[🎬 README_DEMO_FALCON.md](README_DEMO_FALCON.md)**
+[🎬 README_DEMO_FALCON.md](README_DEMO_FALCON.md)
 
 La guía separa la primera instalación del arranque diario y no requiere abrir
 PostgreSQL a la red.
