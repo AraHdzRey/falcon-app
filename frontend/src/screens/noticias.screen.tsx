@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { COLORS } from '../constants/colors';
+import { formatNewsDate } from '../features/news/date';
 import type { NewsItem } from '../sync/types';
 
 type Props = { noticias: NewsItem[]; onAbrirNoticia: (id: string) => void };
@@ -26,7 +27,7 @@ export default function NoticiasScreen({ noticias, onAbrirNoticia }: Props) {
             <Text style={styles.nombre}>{noticia.title}</Text>
             <Text style={styles.resumen} numberOfLines={2}>{noticia.body}</Text>
             <View style={styles.metadatos}>
-              <Text style={styles.fecha}>{new Date(noticia.updatedAt).toLocaleDateString('es-MX')}</Text>
+              <Text style={styles.fecha}>{formatNewsDate(noticia.updatedAt)}</Text>
               {noticia.pending && <Text style={styles.categoria}>Pendiente</Text>}
             </View>
           </View>

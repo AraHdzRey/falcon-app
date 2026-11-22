@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { COLORS } from '../constants/colors';
+import { formatNewsDate } from '../features/news/date';
 import type { NewsItem } from '../sync/types';
 
 type Props = { noticia: NewsItem; onVolver: () => void };
@@ -18,7 +19,7 @@ export default function DetalleNoticiaScreen({ noticia, onVolver }: Props) {
         <View style={styles.informacion}>
           <Text style={styles.titulo}>{noticia.title}</Text>
           <View style={styles.metadatos}>
-            <Text style={styles.textoFecha}>{new Date(noticia.updatedAt).toLocaleString('es-MX')}</Text>
+            <Text style={styles.textoFecha}>{formatNewsDate(noticia.updatedAt, true)}</Text>
             {noticia.pending && <Text style={styles.textoEtiqueta}>Pendiente de sincronización</Text>}
           </View>
           <View style={styles.separador} />
