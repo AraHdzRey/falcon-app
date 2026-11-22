@@ -335,7 +335,22 @@ No crear scripts duplicados si ya existe uno que cumple la función.
 
 ## `docs/`
 
-Contiene documentación técnica y de colaboración.
+Contiene toda la documentación técnica, histórica, de colaboración y de
+pruebas del proyecto. No es necesario leer todos los documentos.
+
+Usa el **[índice completo de documentación FALCÓN](docs/README.md)** para saber
+qué archivo corresponde a tu tarea y si describe el estado vigente, una fase
+histórica, una referencia o una validación todavía pendiente.
+
+| Si vas a... | Revisa primero |
+| --- | --- |
+| trabajar con la API | [`docs/api/`](docs/api/) y Swagger `/docs` |
+| trabajar con PostgreSQL | [`docs/database/`](docs/database/) |
+| adaptar trabajo antiguo | [`docs/collaboration/`](docs/collaboration/) |
+| preparar tu computadora | [`docs/environment/`](docs/environment/) |
+| revisar arquitectura | [`docs/architecture/`](docs/architecture/) |
+| hacer pruebas | [`docs/testing/`](docs/testing/) |
+| consultar fases | [`docs/phases/`](docs/phases/) |
 
 Los documentos deben mantenerse alineados con el código realmente implementado.
 
