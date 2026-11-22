@@ -8,6 +8,7 @@ la guía correspondiente.
 
 | Necesito... | Documento |
 | --- | --- |
+| Levantar FALCÓN y preparar una demo | [`../README_DEMO_FALCON.md`](../README_DEMO_FALCON.md) |
 | Entender la fase vigente | [`phases/README_PHASE_1_1.md`](phases/README_PHASE_1_1.md) |
 | Entender la evolución del proyecto | [`phases/README.md`](phases/README.md) |
 | Entender la arquitectura local | [`architecture/LOCAL_API_ARCHITECTURE.md`](architecture/LOCAL_API_ARCHITECTURE.md) |

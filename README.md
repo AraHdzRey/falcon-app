@@ -12,6 +12,12 @@
 > Consulta este mapa para saber qué documento corresponde a tu tarea y si es
 > vigente, histórico, de referencia o una prueba pendiente.
 
+> [!NOTE]
+> ## [🎬 GUÍA PARA LEVANTAR FALCÓN Y HACER UNA DEMOSTRACIÓN](README_DEMO_FALCON.md)
+>
+> Sigue este runbook para preparar PostgreSQL, API, Swagger, Expo y un teléfono
+> Android desde una computadora nueva o durante el arranque diario.
+
 Aplicación móvil de gestión con frontend React Native/Expo, API REST local en
 Node.js/TypeScript y PostgreSQL como fuente central de verdad. SQLite funciona
 únicamente como caché y outbox offline en cada dispositivo.

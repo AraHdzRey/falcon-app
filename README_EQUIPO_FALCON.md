@@ -356,6 +356,17 @@ Los documentos deben mantenerse alineados con el código realmente implementado.
 
 ---
 
+## ¿Necesitas levantar el proyecto para una demo?
+
+Sigue paso a paso:
+
+**[🎬 README_DEMO_FALCON.md](README_DEMO_FALCON.md)**
+
+La guía separa la primera instalación del arranque diario y no requiere abrir
+PostgreSQL a la red.
+
+---
+
 # 5. Base de datos oficial
 
 La base oficial se llama:
