@@ -115,7 +115,7 @@ export const openApiDocument = {
     '/admin/collaborators/{id}/deactivate': { patch: { tags: ['Administration'], summary: 'Desactiva colaborador y revoca tokens', security: bearer, parameters: [{ in: 'path', name: 'id', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Colaborador desactivado' }, '409': errorResponse } } },
     '/admin/collaborators/{id}/reactivate': { patch: { tags: ['Administration'], summary: 'Reactiva colaborador', security: bearer, parameters: [{ in: 'path', name: 'id', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Colaborador reactivado' }, '404': errorResponse } } },
     '/news': {
-      get: { tags: ['News'], summary: 'Lista noticias activas', security: bearer, responses: { '200': { description: 'Noticias' }, '401': errorResponse } },
+      get: { tags: ['News'], summary: 'Lista noticias activas', security: bearer, parameters: [{ in: 'query', name: 'search', schema: { type: 'string', minLength: 1, maxLength: 120 } }], responses: { '200': { description: 'Noticias' }, '400': errorResponse, '401': errorResponse } },
       post: { tags: ['News'], summary: 'Publica noticia y avanza versión de sincronización', security: bearer, requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/NewsInput' } } } }, responses: { '201': { description: 'Noticia publicada' }, '403': errorResponse } },
     },
     '/news/{id}': {

@@ -5,6 +5,10 @@ export interface DirectoryFilters {
   area?: string;
 }
 
+export interface NewsFilters {
+  search?: string;
+}
+
 export interface CollaboratorView {
   id: number;
   employeeNumber: string;
@@ -119,7 +123,7 @@ export interface ModulesRepository {
     id: number,
     actor: SessionUser,
   ): Promise<MutationResult<CollaboratorView>>;
-  listNews(): Promise<NewsView[]>;
+  listNews(filters?: NewsFilters): Promise<NewsView[]>;
   getNews(id: string): Promise<NewsView | null>;
   createNews(
     input: { title: string; body: string },

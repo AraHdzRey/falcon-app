@@ -21,6 +21,8 @@ import type {
   CollaboratorView,
   ComplaintView,
   ModulesRepository,
+  NewsFilters,
+  NewsView,
 } from '../src/types/modules';
 
 const collaborator: SessionUser = {
@@ -113,6 +115,26 @@ const complaintView: ComplaintView = {
 class FakeModulesRepository implements ModulesRepository {
   complaintActor: SessionUser | null | undefined;
   deactivationStatus: 'ok' | 'self_action' | 'last_admin' = 'ok';
+  newsItems: NewsView[] = [
+    {
+      id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      title: 'Mantenimiento de sistemas',
+      body: 'Ventana programada de soporte técnico durante el fin de semana.',
+      active: true,
+      version: 5,
+      createdAt: '2026-11-16T12:00:00.000Z',
+      updatedAt: '2026-11-16T12:00:00.000Z',
+    },
+    {
+      id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccd',
+      title: 'Aviso administrativo',
+      body: 'Nuevo horario de atención para la coordinación interna.',
+      active: true,
+      version: 4,
+      createdAt: '2026-11-15T12:00:00.000Z',
+      updatedAt: '2026-11-15T12:00:00.000Z',
+    },
+  ];
 
   async listDirectory(): Promise<CollaboratorView[]> {
     return [collaboratorView];
@@ -152,27 +174,51 @@ class FakeModulesRepository implements ModulesRepository {
   async reactivateCollaborator() {
     return { status: 'ok' as const, value: collaboratorView };
   }
-  async listNews() {
-    return [await this.getNews('cccccccc-cccc-4ccc-8ccc-cccccccccccc')].filter(
-      (item): item is NonNullable<typeof item> => Boolean(item),
-    );
+  async listNews(filters?: NewsFilters) {
+    const search = filters?.search?.toLowerCase();
+    return this.newsItems.filter((item) => {
+      if (!item.active) return false;
+      if (!search) return true;
+      return (
+        item.title.toLowerCase().includes(search) ||
+        item.body.toLowerCase().includes(search)
+      );
+    });
   }
   async getNews(id: string) {
-    return {
+    return this.newsItems.find((item) => item.id === id && item.active) ?? null;
+  }
+  async createNews(input: { title: string; body: string }) {
+    const id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    const created: NewsView = {
       id,
-      title: 'Noticia sintética',
-      body: 'Contenido sintético',
+      title: input.title,
+      body: input.body,
       active: true,
       version: 5,
       createdAt: '2026-11-16T12:00:00.000Z',
       updatedAt: '2026-11-16T12:00:00.000Z',
     };
-  }
-  async createNews(input: { title: string; body: string }) {
-    return { ...(await this.getNews('cccccccc-cccc-4ccc-8ccc-cccccccccccc'))!, ...input };
+    const index = this.newsItems.findIndex((item) => item.id === id);
+    if (index >= 0) {
+      this.newsItems[index] = created;
+    } else {
+      this.newsItems.unshift(created);
+    }
+    return created;
   }
   async updateNews(id: string, input: { title: string; body: string }) {
-    return { ...(await this.getNews(id))!, ...input, version: 6 };
+    const index = this.newsItems.findIndex((item) => item.id === id);
+    if (index < 0) return null;
+    const current = this.newsItems[index]!;
+    const updated: NewsView = {
+      ...current,
+      ...input,
+      active: true,
+      version: current.version + 1,
+    };
+    this.newsItems[index] = updated;
+    return updated;
   }
   async listComplaintCategories() {
     return [{ code: 'PROCESOS', name: 'Procesos' }];
@@ -475,6 +521,158 @@ test('noticias requieren autenticación y autorización editorial', async () => 
     .send({ title: 'Noticia actualizada', body: 'Contenido actualizado' });
   assert.equal(updated.status, 200);
   assert.equal(updated.body.news.version, 6);
+});
+
+test('GET /news lista y filtra por search en título y contenido sin distinguir mayúsculas', async () => {
+  const { app, tokens } = setup();
+  const authorization = {
+    Authorization: `Bearer ${tokens.sign({ userId: 10, tokenVersion: 0 })}`,
+  };
+
+  const all = await request(app).get('/news').set(authorization);
+  assert.equal(all.status, 200);
+  assert.equal(all.body.status, 'ok');
+  assert.equal(all.body.total, 2);
+  assert.equal(all.body.items.length, 2);
+
+  const byTitle = await request(app)
+    .get('/news?search=MANTENIMIENTO')
+    .set(authorization);
+  assert.equal(byTitle.status, 200);
+  assert.equal(byTitle.body.total, 1);
+  assert.equal(byTitle.body.items[0].id, 'cccccccc-cccc-4ccc-8ccc-cccccccccccc');
+
+  const byBody = await request(app)
+    .get('/news?search=COORDINACIÓN')
+    .set(authorization);
+  assert.equal(byBody.status, 200);
+  assert.equal(byBody.body.total, 1);
+  assert.equal(byBody.body.items[0].id, 'cccccccc-cccc-4ccc-8ccc-cccccccccccd');
+
+  const empty = await request(app)
+    .get('/news?search=sin-coincidencias')
+    .set(authorization);
+  assert.equal(empty.status, 200);
+  assert.deepEqual(empty.body.items, []);
+  assert.equal(empty.body.total, 0);
+});
+
+test('GET /news rechaza parámetros search inválidos con 400', async () => {
+  const { app, tokens } = setup();
+  const authorization = {
+    Authorization: `Bearer ${tokens.sign({ userId: 10, tokenVersion: 0 })}`,
+  };
+
+  const invalidQueries = [
+    '/news?search=',
+    '/news?search=%20%20%20',
+    `/news?search=${'a'.repeat(121)}`,
+    '/news?search=a&search=b',
+    '/news?search=hola%00mundo',
+    '/news?search=hola%0amundo',
+    '/news?search=hola%7fmundo',
+  ];
+
+  for (const queryPath of invalidQueries) {
+    const response = await request(app).get(queryPath).set(authorization);
+    assert.equal(response.status, 400, queryPath);
+    assert.deepEqual(response.body, {
+      status: 'error',
+      message: 'Filtros inválidos',
+    });
+  }
+});
+
+test('GET /news/:id valida UUID y devuelve 404 cuando no existe', async () => {
+  const { app, tokens } = setup();
+  const authorization = {
+    Authorization: `Bearer ${tokens.sign({ userId: 10, tokenVersion: 0 })}`,
+  };
+
+  const existing = await request(app)
+    .get('/news/cccccccc-cccc-4ccc-8ccc-cccccccccccc')
+    .set(authorization);
+  assert.equal(existing.status, 200);
+  assert.equal(existing.body.news.title, 'Mantenimiento de sistemas');
+
+  const invalidId = await request(app).get('/news/no-es-uuid').set(authorization);
+  assert.equal(invalidId.status, 400);
+  assert.deepEqual(invalidId.body, { status: 'error', message: 'ID inválido' });
+
+  const missing = await request(app)
+    .get('/news/99999999-9999-4999-8999-999999999999')
+    .set(authorization);
+  assert.equal(missing.status, 404);
+  assert.deepEqual(missing.body, {
+    status: 'error',
+    message: 'Noticia no encontrada',
+  });
+});
+
+test('POST /news y PATCH /news/:id validan body, caracteres de control y UUID', async () => {
+  const { app, repository, tokens } = setup();
+  repository.sessionUser = { ...collaborator, role: 'editor_noticias' };
+  const authorization = {
+    Authorization: `Bearer ${tokens.sign({ userId: 10, tokenVersion: 0 })}`,
+  };
+  const existingId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  const missingId = '99999999-9999-4999-8999-999999999999';
+
+  const invalidBodies: unknown[] = [
+    ['arreglo'],
+    { title: '   ', body: 'Contenido válido' },
+    { title: 'Título válido', body: '   ' },
+    { title: 'Título\u0000inválido', body: 'Contenido válido' },
+    { title: 'Título\ncon salto', body: 'Contenido válido' },
+    { title: 'Título válido', body: 'Contenido\u0000inválido' },
+    { title: 'Título válido', body: 'Contenido\u000binválido' },
+    { title: 'Título válido', body: 'Contenido\u007finválido' },
+  ];
+
+  for (const invalidBody of invalidBodies) {
+    const postResponse = await request(app)
+      .post('/news')
+      .set(authorization)
+      .send(invalidBody as object);
+    assert.equal(postResponse.status, 400);
+    assert.deepEqual(postResponse.body, {
+      status: 'error',
+      message: 'Noticia inválida',
+    });
+
+    const patchResponse = await request(app)
+      .patch(`/news/${existingId}`)
+      .set(authorization)
+      .send(invalidBody as object);
+    assert.equal(patchResponse.status, 400);
+    assert.deepEqual(patchResponse.body, {
+      status: 'error',
+      message: 'Noticia inválida',
+    });
+  }
+
+  const multiline = await request(app)
+    .post('/news')
+    .set(authorization)
+    .send({ title: 'Aviso multilínea', body: 'Línea 1\n\tLínea 2\r\nLínea 3' });
+  assert.equal(multiline.status, 201);
+
+  const patchInvalidId = await request(app)
+    .patch('/news/no-es-uuid')
+    .set(authorization)
+    .send({ title: 'Título', body: 'Contenido' });
+  assert.equal(patchInvalidId.status, 400);
+  assert.deepEqual(patchInvalidId.body, { status: 'error', message: 'ID inválido' });
+
+  const patchMissing = await request(app)
+    .patch(`/news/${missingId}`)
+    .set(authorization)
+    .send({ title: 'Título', body: 'Contenido' });
+  assert.equal(patchMissing.status, 404);
+  assert.deepEqual(patchMissing.body, {
+    status: 'error',
+    message: 'Noticia no encontrada',
+  });
 });
 
 test('queja anónima no enlaza identidad aun con token válido', async () => {
