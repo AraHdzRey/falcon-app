@@ -111,6 +111,12 @@ test(
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
     assert.ok(directory.body.items.length > 0);
+    assert.ok(
+      directory.body.items.every(
+        (item: { area?: unknown }) =>
+          typeof item.area === 'string' && item.area.toLowerCase().includes('ti'),
+      ),
+    );
     assert.doesNotMatch(JSON.stringify(directory.body), /password|tokenVersion|curp|rfc/i);
 
     const syntheticEmployee = `QA${Date.now().toString(36).toUpperCase()}`;

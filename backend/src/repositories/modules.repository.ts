@@ -219,7 +219,7 @@ const withTransaction = async <T>(
 export const createModulesRepository = (pool: Pool): ModulesRepository => ({
   async listDirectory(filters: DirectoryFilters): Promise<CollaboratorView[]> {
     const search = filters.search ? `%${filters.search}%` : null;
-    const area = filters.area ?? null;
+    const area = filters.area ? `%${filters.area}%` : null;
     const result = await pool.query<CollaboratorRow>(
       `${collaboratorSelect}
        WHERE c.activo = TRUE
