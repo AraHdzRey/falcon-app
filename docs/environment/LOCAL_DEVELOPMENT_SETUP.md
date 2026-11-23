@@ -11,7 +11,7 @@
 
 ```powershell
 git clone https://github.com/AraHdzRey/falcon-app.git
-cd Proyecto-FALCON
+cd falcon-app
 
 cd backend
 npm ci

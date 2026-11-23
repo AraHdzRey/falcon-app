@@ -1,5 +1,24 @@
 # Proyecto FALCÓN
 
+> [!IMPORTANT]
+> ## [📘 LEER LA GUÍA OBLIGATORIA DEL EQUIPO FALCÓN](README_EQUIPO_FALCON.md)
+>
+> Antes de modificar código, base de datos, frontend o backend, todo integrante
+> debe leer esta guía completa.
+
+> [!TIP]
+> ## [📚 ÍNDICE COMPLETO DE DOCUMENTACIÓN TÉCNICA](docs/README.md)
+>
+> Consulta este mapa para saber qué documento corresponde a tu tarea y si es
+> vigente, histórico, de referencia o una prueba pendiente.
+
+> [!NOTE]
+> ## [🎬 GUÍA PARA LEVANTAR FALCÓN Y HACER UNA DEMOSTRACIÓN](README_DEMO_FALCON.md)
+>
+> Sigue esta guía paso a paso para descargar el proyecto, preparar PostgreSQL,
+> levantar la API, ejecutar Expo, conectar un celular y realizar una
+> demostración completa de FALCÓN.
+
 Aplicación móvil de gestión con frontend React Native/Expo, API REST local en
 Node.js/TypeScript y PostgreSQL como fuente central de verdad. SQLite funciona
 únicamente como caché y outbox offline en cada dispositivo.
@@ -26,9 +45,10 @@ esquema y los datos sintéticos sin copiar una instalación PostgreSQL.
 
 ## Documentación técnica
 
+- [📚 Índice completo de documentación técnica](docs/README.md)
 - [Arquitectura de la API local](docs/architecture/LOCAL_API_ARCHITECTURE.md)
 - [Arquitectura offline-first](docs/architecture/OFFLINE_FIRST_ARCHITECTURE.md)
-- [Referencia de la API](docs/api/README_API_LOCAL_FALCON.md)
+- [Referencia histórica de la API de Fase 0.9](docs/api/README_API_LOCAL_FALCON.md)
 - [Compatibilidad de API heredada](docs/api/LEGACY_API_COMPATIBILITY.md)
 - [Base de datos, migraciones y seeds](docs/database/README_DATABASE.md)
 - [Guía de adaptación para colaboradores](docs/collaboration/README_DATABASE_ADAPTATION_GUIDE.md)
