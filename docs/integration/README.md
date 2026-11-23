@@ -1,216 +1,297 @@
-# FALCÓN — Estado técnico e integración del equipo
+# FALCÓN — Estado de integración y evidencia técnica
 
-**Documento de coordinación técnica · 21 de noviembre de 2026**
-**Responsable de este avance:** Ara
-**Proyecto:** FALCÓN, aplicación para personal con frontend Expo/React Native, API Node/Express/TypeScript, PostgreSQL y almacenamiento offline SQLite.
-**Entrega académica prevista:** 24 de noviembre de 2026.
+**Fecha de corte:** 22 de noviembre de 2026
+**Rama de trabajo:** `feature/capas-directorio-ti`
+**Rama oficial de integración:** `integration/falcon-unified-api`
+**Entrega académica prevista:** 24 de noviembre de 2026
 
-> **Importante:** este README describe el estado comprobado en la máquina de Ara y el plan propuesto para integrar el trabajo del equipo. **No significa que todo esté fusionado, publicado ni probado de extremo a extremo.** Actualizarlo después de cada integración y ejecución verificable.
+> Este documento describe implementaciones locales y pruebas realizadas
+> en el entorno de desarrollo de Ara. No significa que los cambios ya
+> estén fusionados, publicados o reproducidos por el resto del equipo.
 
-## 1. Resumen para el equipo
+## 1. Resumen ejecutivo
 
-Hay **dos implementaciones relevantes que aún deben unificarse**:
+FALCÓN cuenta con una aplicación Expo/React Native conectada a una
+API Express/TypeScript y a PostgreSQL, con almacenamiento SQLite local.
 
-- **`integration/falcon-unified-api`**, propuesta como base común: backend Express con PostgreSQL, autenticación, módulos funcionales y sincronización; frontend piloto en `frontend/`.
-- **`feature/sesion-web-falcon`**, rama del trabajo visual de Ara: pantallas móviles en `apps/mobile/`, construidas con **Expo Router**.
+En Android se validaron:
 
-Además:
+- Inicio de sesión y reconocimiento del rol administrador.
+- Directorio de colaboradores.
+- Consulta de perfil de colaborador.
+- Listado y detalle de Noticias.
+- Presentación de fechas de Noticias.
+- Lectura de Directorio y Noticias sin conexión.
+- Creación de una noticia offline mediante outbox.
+- Recuperación de la conexión y envío de la operación pendiente.
+- Persistencia de la noticia sincronizada en PostgreSQL.
 
-- **`feature/falcon-noticias-service`** contiene trabajo del microservicio de Noticias, reportado por otro integrante como ejecutable en el puerto 3101 con 15 pruebas aprobadas. **Este reporte aún no ha sido reproducido por Ara sobre la base integrada.**
-- **`feature/capas-directorio-ti`** contiene los cambios realizados por Ara sobre un worktree separado, creado desde la referencia local `origin/integration/falcon-unified-api` en el commit `623eb9b`: arquitectura por capas para Directorio/Perfil, documentación y aislamiento local por usuario.
+Estas comprobaciones corresponden al entorno de ensayo. La integración
+en la rama oficial y las pruebas realizadas por otros integrantes
+siguen pendientes.
 
-**Camino A propuesto por el equipo:** utilizar `integration/falcon-unified-api` como base, llevar las pantallas de Ara al frontend integrado, incorporar el servicio independiente de Noticias sobre esa base y compatibilizar autenticación, permisos, almacenamiento y sincronización.
+## 2. Arquitectura oficial: tres capas
 
-**Punto crítico:** conectar un microservicio en otro puerto **no demuestra por sí mismo** que el sistema entero sea de microservicios ni que los siete módulos implementen las cinco capas. La presentación debe distinguir arquitectura por capas de despliegue por servicios.
+La guía actual del equipo define tres capas principales.
 
-## 2. Estado comprobado a la fecha
-
-| Área | Estado | Evidencia o límite |
+| Capa | Implementación | Responsabilidad |
 | --- | --- | --- |
-| Código de backend unificado | Base local disponible | `origin/integration/falcon-unified-api` estaba en `623eb9b` al revisar; falta `fetch` para confirmar actualidad remota. |
-| Arquitectura por capas: Directorio y Perfil | Implementada localmente | Commit `be44f2d`. |
-| Documentación de cinco capas | Creada | Commit `d57c86c`, archivo `docs/architecture/FALCON_LAYERED_ARCHITECTURE.md`. |
-| Separación SQLite por cuenta y guardas de sesión | Implementada localmente | Commit `aae1721`, en `feature/capas-directorio-ti`. |
-| Backend — pruebas seleccionadas | **29/29 aprobadas** | Pruebas HTTP, dominio, casos de uso y adaptador; sin PostgreSQL real. |
-| Frontend — pruebas seleccionadas | **11/11 aprobadas** | Incluye simulación de respuestas tardías; sin ejecución en Expo nativo. |
-| TypeScript / ESLint | Aprobados en ambos proyectos en las comprobaciones indicadas | El backend también compiló. |
-| Pantallas de Ara | Localizadas, no integradas | `apps/mobile/app/(tabs)/`; falta adaptar navegación y contratos. |
-| Servicio de Noticias | Rama localizada; integración pendiente | El equipo reporta puerto 3101 y 15/15 pruebas; falta verificar en esta integración. |
-| Base de datos real | No alterada por los cambios de Ara aquí descritos | Ninguna migración o prueba de escritura ejecutada sobre `falcon_db` durante estos pasos. |
-| End-to-end Expo → API → PostgreSQL → SQLite | **Pendiente** | No se debe afirmar que ya está validado. |
+| Presentación | `frontend/` — Expo y React Native | Pantallas, navegación y experiencia móvil |
+| Lógica de negocio | `backend/` — Node.js, Express y TypeScript | Autenticación, permisos, reglas, REST y sincronización |
+| Datos | PostgreSQL | Persistencia central y relaciones del modelo oficial |
 
-## 3. Ramas, worktrees y commits
+El flujo principal es:
 
-### Ramas
-
-| Rama | Uso |
-| --- | --- |
-| `origin/integration/falcon-unified-api` | Referencia de la base unificada propuesta. |
-| `feature/sesion-web-falcon` | Trabajo original de Ara, con `apps/mobile/`; checkout en `C:\Users\araha\Proyectos\falcon-app`. |
-| `feature/capas-directorio-ti` | Worktree de integración/arquitectura de Ara en `C:\Users\araha\Proyectos\falcon-capas-ti`. |
-| `feature/falcon-noticias-service` | Rama del microservicio desarrollada en paralelo. |
-
-### Commits locales de Ara sobre `623eb9b`
-
-| Commit | Contenido |
-| --- | --- |
-| `be44f2d` | `refactor(directory): introduce layered architecture and dependency injection` |
-| `d57c86c` | `docs(architecture): document layered directory implementation` |
-| `aae1721` | `fix(frontend): isolate SQLite data by account and guard session sync` |
-
-**Estos commits estaban en la rama local `feature/capas-directorio-ti` y el worktree quedó limpio.** No hay evidencia de que se hayan publicado al remoto. Los compañeros **no pueden verlos solo por existir localmente**: habrá que publicar una rama nueva y abrir una revisión/PR, una vez acordado con el equipo.
-
-No ejecutar `git push` sin comprobar rama y destino. La rama de arquitectura se originó desde la rama remota de integración y su configuración de seguimiento debe revisarse antes de cualquier publicación.
-
-## 4. Arquitectura que se puede demostrar
-
-Se utiliza una separación de **cinco responsabilidades** para el segmento implementado de Directorio/Perfil:
-
-```mermaid
-flowchart TD
-    UI["1. Presentación: Expo / React Native"] --> HTTP["2. API: Express y rutas HTTP"]
-    HTTP --> UC["3. Aplicación: casos de uso"]
-    UC --> PORT["4. Dominio: reglas y DirectoryRepository"]
-    ADAPTER["5. Infraestructura: adaptador PostgreSQL"] -. "Implementa contrato" .-> PORT
-    ADAPTER --> MODULES["ModulesRepository existente"]
-    MODULES --> DB[(PostgreSQL)]
-    FAKE["Repositorio simulado de pruebas"] -. "Implementa contrato" .-> PORT
+```text
+Android / Expo
+     |
+     | HTTP / REST / JSON
+     v
+API Express / TypeScript
+     |
+     | Repositorios / pg
+     v
+PostgreSQL
 ```
 
-### Implementación concreta
+SQLite es almacenamiento local del dispositivo para lectura offline
+y operaciones pendientes. No sustituye a PostgreSQL como fuente central.
 
-- `backend/src/domain/directory/directory.repository.ts`: contrato, tipos y reglas de visibilidad.
-- `backend/src/application/directory/list-directory.use-case.ts`: listado de colaboradores activos.
-- `backend/src/application/directory/get-my-profile.use-case.ts`: perfil propio disponible si colaborador y cuenta están activos.
-- `backend/src/routes/directory.routes.ts`: control HTTP de `GET /directory` y `GET /profile/me`.
-- `backend/src/infrastructure/postgres/directory.repository.ts`: adaptador **transitorio** que delega en el repositorio existente.
-- `backend/src/app.ts` y `backend/src/server.ts`: inyección/composición de dependencias.
+### Separación interna del backend
 
-**Limitación relevante:** todavía no se ha extraído el SQL de `ModulesRepository` a un repositorio exclusivo del Directorio. Los otros módulos mantienen su estructura existente. **Oracle no está instalado ni conectado:** usar otro motor es un ejemplo de extensibilidad por interfaz, no una migración efectuada.
+El trabajo de Directorio/Perfil distingue responsabilidades internas:
 
-### Recorrido distinto: sincronización móvil
+1. Presentación y entrada HTTP.
+2. Controladores y rutas.
+3. Aplicación y casos de uso.
+4. Dominio, reglas e interfaces.
+5. Infraestructura y adaptadores de persistencia.
 
-El frontend piloto original utiliza otro camino:
+Estas cinco responsabilidades **no reemplazan las tres capas oficiales**.
+Son una organización interna aplicada al segmento de Directorio/Perfil.
 
-```mermaid
-flowchart TD
-    EXPO["Expo / App.tsx"] --> COORD["Sincronización: coordinator.ts"]
-    COORD --> ROUTE["GET /sync/changes"]
-    ROUTE --> SYNC["SyncRepository / consultas PostgreSQL"]
-    SYNC --> DB[(PostgreSQL)]
-    ROUTE --> CACHE["Snapshot → SQLite local"]
-    CACHE --> VIEW["Dashboard móvil"]
+Evidencia: commit `be44f2d` y documentación en
+`docs/architecture/FALCON_LAYERED_ARCHITECTURE.md`.
+
+**Limitación:** los otros módulos no han sido refactorizados completamente
+a esa misma estructura. La sincronización todavía utiliza consultas
+del repositorio PostgreSQL existente.
+
+### Noticias y microservicios
+
+La API unificada ya dispone de funcionalidades de Noticias.
+
+Conforme a `README_EQUIPO_FALCON.md`, no se incorporará automáticamente
+el servicio histórico `services/noticias/` ni se duplicarán endpoints.
+Un servicio independiente requiere una decisión técnica del equipo.
+
+La rama antigua puede consultarse como referencia, pero su existencia
+no demuestra que esté integrada.
+
+## 3. Ramas y trabajo desarrollado
+
+La rama `feature/capas-directorio-ti` surgió de la referencia oficial
+`623eb9b`. Al último `git fetch` comprobado, la referencia remota
+oficial llegó a `cfe47d4`, con dos commits adicionales de documentación.
+
+El trabajo original de diseño en `feature/sesion-web-falcon`
+permanece conservado. Las pantallas se adaptaron al frontend unificado;
+no se copió íntegramente el sistema anterior de Expo Router.
+
+### Commits propios
+
+| Commit | Trabajo |
+| --- | --- |
+| `be44f2d` | Arquitectura interna desacoplada de Directorio y Perfil |
+| `d57c86c` | Documento de arquitectura |
+| `aae1721` | SQLite separado por usuario y protección de sesión |
+| `9581bc3` | Documentación inicial de integración |
+| `c2abae6` | Adaptación de pantallas al frontend unificado |
+| `a8c40b4` | Correcciones de efecto React e importaciones |
+| `a7190ed` | Configuración TypeScript compatible con Expo |
+| `25ca553` | Corrección de parámetros SQL de auditoría administrativa |
+| `a4f920e` | Normalización de fechas de Noticias y pruebas |
+
+Los commits permanecen en la rama local mientras no se publique
+una rama de revisión. No realizar push directo a la rama oficial.
+
+## 4. Estado funcional y evidencia
+
+| Componente | Estado | Evidencia |
+| --- | --- | --- |
+| Login administrativo | Validado localmente | Inicio exitoso desde Android |
+| API y PostgreSQL | Validado en ensayo | `/health/db` con estado `ok` |
+| Directorio | Validado localmente | Cinco colaboradores visibles en Android |
+| Perfil de colaborador | Validado localmente | Vista y navegación comprobadas |
+| Noticias | Validado localmente | Listado y detalle mostrados |
+| Fechas de Noticias | Validado localmente | Desapareció `Invalid Date` |
+| Lectura SQLite offline | Validado localmente | Directorio y Noticias visibles sin red |
+| Outbox offline | Validado localmente | Contador de pendientes de 0 a 1 |
+| Reanudación de sincronización | Validado en una prueba | Estado volvió a `EN LÍNEA` |
+| Envío de noticia pendiente | Validado localmente | Contador volvió a 0 |
+| Persistencia central de noticia | Validado en ensayo | PostgreSQL: 2 noticias, versión global 2 |
+| Auditoría de administrador | Validado en ensayo | 2 eventos `ADMIN_LOGIN` |
+| Conflictos e intermitencia prolongada | Pendiente | Sin prueba integral en dispositivo |
+| Reproducción por otro integrante | Pendiente | Requiere rama publicada y revisión |
+| Integración definitiva | Pendiente | Sin merge a la rama oficial |
+
+Las pruebas manuales fueron realizadas con Expo Go compatible
+con el SDK 57 del frontend.
+
+Una ejecución exitosa no garantiza funcionamiento en todos los
+dispositivos ni bajo todas las condiciones de red.
+
+## 5. PostgreSQL y adaptación de identidad
+
+El modelo oficial utiliza:
+
+- `colaboradores`
+- `usuarios`
+- `roles`
+- `usuario_roles`
+
+Las migraciones oficiales consideradas son:
+
+```text
+backend/migrations/001_auth.sql
+backend/migrations/002_offline_sync.sql
+backend/migrations/003_complaints_audit.sql
 ```
 
-El endpoint `/sync/changes` **no pasa actualmente por los casos de uso nuevos del Directorio**. Por tanto, no debe presentarse como el mismo recorrido que `/directory`.
+La base original `falcon_dev` se mantuvo intacta y se respaldó
+antes de realizar la adaptación.
 
-## 5. Trabajo frontend de Ara y adaptación requerida
+Para las pruebas se restauró una copia y se trabajó exclusivamente
+en `falcon_adaptacion_ensayo_ara`.
 
-### Pantallas encontradas en el proyecto original
+La adaptación conservó identificadores y datos útiles de:
 
-`apps/mobile/app/(tabs)/` contiene, entre otras:
+```text
+empleados       -> colaboradores
+cuentas_acceso  -> usuarios
+rol anterior    -> usuario_roles
+```
 
-- `directorio.tsx`
-- `perfil-colaborador.tsx`
-- `noticias.tsx`
-- `noticia.tsx`
-- `index.tsx`
+Se verificaron siete colaboradores, cuatro usuarios, cuatro
+asignaciones de rol y siete roles definidos. Tres usuarios quedaron
+activos y uno inactivo según el estado original de las cuentas y
+sus colaboradores asociados.
 
-El proyecto de Ara usa **Expo Router**, mientras que la base unificada tiene un frontend en `frontend/App.tsx`. **No conviene copiar pantallas sin migrar la navegación y las dependencias**. Se recomienda tomar una pantalla a la vez, mantener el diseño y adaptar el consumo de datos a los endpoints y esquemas reales.
+El nombre oficial de base de datos del equipo es `falcon_db`.
+La base de ensayo no reemplaza esa decisión arquitectónica.
 
-**Orden sugerido:** Directorio → Perfil → Noticias/listado → Detalle de noticia; conservar login, permisos y estados de sincronización. Este orden es una propuesta técnica, no una integración ya completada.
+**Pendiente:** acordar y ejecutar el procedimiento reproducible de
+adaptación hacia la base oficial local, después de respaldos,
+revisión de compatibilidad y autorización correspondiente.
 
-### Aislamiento móvil añadido por Ara
+No aplicar `db:reset` ni realizar escrituras sobre la base original.
 
-- `frontend/src/storage/account-scope.ts`: nombre de archivo SQLite según `user.id` y validación de propietario.
-- `frontend/src/storage/database.ts`: selección de base por usuario (`falcon_user_<id>.db`).
-- `frontend/src/sync/engine.ts` y `coordinator.ts`: operaciones vinculadas a la cuenta y verificación de sesión vigente frente a respuestas tardías.
-- `frontend/App.tsx`: protección de UI al cerrar/cambiar sesión.
+## 6. Pruebas automatizadas
 
-**No se borra ni migra automáticamente** `falcon_local.db`, que puede contener operaciones offline antiguas sin propietario identificado. El aislamiento de archivos **no equivale a cifrado**, y su comportamiento en dispositivo aún requiere pruebas.
+### Backend
 
-## 6. Noticias: decisión de integración pendiente
-
-El equipo propone levantar `services/noticias/` en **3101**, conservando el backend principal en **3000**. Antes de integrar hay que acordar:
-
-1. **Responsabilidad de escritura:** ¿quién crea, modifica y versiona las Noticias, la API unificada o el servicio?
-2. **Fuente de datos:** ¿ambos consultan la misma base PostgreSQL y cómo se controla el acceso?
-3. **JWT:** adaptar el servicio al identificador `userId` y verificar firma, expiración, roles y autorización, sin asumir compatibilidad por el simple nombre del campo.
-4. **Sincronización offline:** asegurar que las operaciones en cola mantengan un único proceso de validación/idempotencia y que el contrato `/sync/changes` no quede desactualizado.
-5. **Rutas consumidas por Expo:** especificar qué URL/base y qué servicio atiende cada pantalla; no duplicar funcionalidad por accidente.
-
-La prueba «15/15» y el puerto 3101 proceden del reporte del equipo, **no de una ejecución reproducida en este worktree**.
-
-## 7. Pruebas y reproducción del avance local
-
-**Entorno revisado:** Windows PowerShell, Node.js 24.x, npm 11.x. Utilizar `npm.cmd` en PowerShell, porque `npm.ps1` puede estar bloqueado por la política de ejecución.
-
-### Backend (pruebas seleccionadas)
+Se ejecutaron:
 
 ```powershell
-Set-Location "C:\Users\araha\Proyectos\falcon-capas-ti\backend"
+Set-Location backend
 & npm.cmd run typecheck
 & npm.cmd run lint
+& npm.cmd test
 & npm.cmd run build
-node --import tsx --test tests/api.test.ts tests/directory.layers.test.ts tests/directory.adapter.test.ts
 ```
 
-Resultado de referencia: **29 pruebas aprobadas, 0 fallidas**, sin conexión a PostgreSQL real.
+Último resultado comprobado:
 
-### Frontend (pruebas seleccionadas)
+- 29 pruebas aprobadas.
+- 1 prueba omitida.
+- 0 fallidas.
+- TypeScript, ESLint y compilación aprobados.
+
+La prueba omitida no debe presentarse como superada.
+
+### Frontend
+
+Se ejecutaron:
 
 ```powershell
-Set-Location "C:\Users\araha\Proyectos\falcon-capas-ti\frontend"
+Set-Location frontend
 & npm.cmd run typecheck
 & npm.cmd run lint
-node --import tsx --test tests/account-scope.test.ts tests/api-config.test.ts tests/sync-coordinator.test.ts tests/sync-session-guard.test.ts
+node --import tsx --test tests/*.test.ts
 ```
 
-Resultado de referencia: **11 pruebas aprobadas, 0 fallidas**. Las pruebas de cambio de sesión usan simulaciones de red y almacenamiento, no un teléfono ni SQLite nativo.
+Último resultado comprobado:
 
-### Seguridad y operaciones
+- 18 pruebas aprobadas.
+- 0 fallidas.
+- TypeScript y ESLint aprobados.
 
-- No ejecutar migraciones, comandos de borrado ni escrituras contra `falcon_db` para «probar integración» sin respaldo y autorización del responsable.
-- No publicar `.env`, claves, credenciales, JWT ni volcados de PostgreSQL en Git, mensajes de equipo o reportes.
-- Validar el contrato del JWT y la autorización del microservicio antes de habilitar operaciones reales.
-- Verificar la rama y `git status` antes de aplicar cambios, fusionar o publicar.
+Cuatro pruebas específicas cubren formatos de fecha de Noticias.
 
-## 8. Plan de integración y responsables por confirmar
+Estas pruebas automatizadas complementan, pero no sustituyen,
+la validación en Android con PostgreSQL real.
 
-| Orden | Trabajo | Criterio de terminado | Estado |
-| --- | --- | --- | --- |
-| 1 | Publicar el avance de Ara en una rama revisable | PR/merge request hacia base consensuada, sin sobrescribir trabajo | Pendiente |
-| 2 | Confirmar la referencia remota actual de `unified` | `git fetch` y comparación de commits/contratos | Pendiente |
-| 3 | Migrar Directorio de `apps/mobile` a frontend integrado | Pantalla visible con datos correctos, login y control de errores | Pendiente |
-| 4 | Migrar Perfil | Perfil correcto del usuario autenticado, sin exposición entre cuentas | Pendiente |
-| 5 | Migrar Noticias y detalle | Listado/detalle coherentes con permisos y contrato API | Pendiente |
-| 6 | Integrar el microservicio de Noticias | JWT, dueño de escrituras, rutas y pruebas documentadas | Pendiente |
-| 7 | Validar Expo ↔ API ↔ PostgreSQL ↔ SQLite | Demostración con cuentas de prueba, offline y cambio de sesión | Pendiente |
-| 8 | Preparar defensa de arquitectura | Diagrama real, límites, comandos y evidencia repetible | Pendiente |
+## 7. Reproducción de la demostración
 
-**Criterio de calidad:** preferir una pantalla funcional conectada a la API real sobre cuatro pantallas que solo muestren datos simulados. Mantener registradas las limitaciones; no declarar terminada una integración sin reproducirla.
+Entorno utilizado: Windows PowerShell, Node.js, Expo Go y PostgreSQL.
 
-## 9. Registro de trabajo y comunicación
+1. Utilizar la rama de trabajo identificada y las dependencias del proyecto.
+2. Levantar la API con variables de entorno locales y la base de ensayo.
+3. Comprobar `/health/db`.
+4. Configurar `EXPO_PUBLIC_API_URL` con la IP LAN de la computadora.
+5. Iniciar Expo y abrir FALCÓN en un teléfono de la misma red.
+6. Autenticarse únicamente con una cuenta de desarrollo autorizada.
+7. Consultar Directorio, Perfil, Noticias y detalle.
+8. Activar modo avión y comprobar lectura offline.
+9. Crear una noticia sintética en la cola local.
+10. Recuperar la red, comprobar el contador y la sincronización.
+11. Verificar por consulta de solo lectura el registro en PostgreSQL.
 
-Al terminar cada tarea, anotar aquí o en el PR:
+No documentar contraseñas, tokens ni secretos de desarrollo.
 
-| Fecha | Rama / commit | Cambio | Pruebas | Pendiente |
-| --- | --- | --- | --- | --- |
-| 19–20 nov 2026 | `be44f2d` | Capas para Directorio/Perfil | Backend 29/29 | PostgreSQL E2E |
-| 19–20 nov 2026 | `d57c86c` | Documento de arquitectura | Revisión de estructura | Actualizar con integración |
-| 20–21 nov 2026 | `aae1721` | SQLite por cuenta y guardas de sincronización | Frontend 11/11 | Expo nativo y migración de datos antiguos |
-| Por realizar | Sin commit | Migración de pantallas de Ara | No ejecutadas | Integración con API unificada |
+### Seguridad y límites
 
-## 10. Próxima acción inmediata
+- PostgreSQL no se expone directamente al teléfono.
+- La conexión móvil se realiza mediante la API.
+- La demostración local utiliza HTTP sin cifrar; limitarla a una
+  red privada y datos de prueba.
+- Para una instalación real deben revisarse TLS, credenciales
+  de base de datos con privilegios mínimos y despliegue.
+- El aislamiento de SQLite por cuenta no implica cifrado.
+- La base SQLite heredada `falcon_local.db` no se elimina
+  ni se migra automáticamente.
+- La recuperación de red fue validada en el escenario descrito,
+  no mediante una batería de pruebas de resistencia.
 
-Se generó en la máquina de Ara el reporte local:
+## 8. Trabajo pendiente para integrar
 
-`C:\Users\araha\AppData\Local\Temp\FALCON_REPORTE_INTEGRACION_ARA.txt`
+| Prioridad | Actividad | Criterio de aceptación |
+| --- | --- | --- |
+| Alta | Revisar diferencias con la rama oficial | Sin sobrescribir trabajo del equipo |
+| Alta | Publicar rama revisable con aprobación | Pull Request hacia la rama oficial |
+| Alta | Actualizar diagramas funcional y técnico | Consistentes con las tres capas |
+| Alta | Documentar preparación de `falcon_db` | Migraciones y adaptación reproducibles |
+| Media | Verificar cambio de cuenta en Android | Sin exposición de caché entre usuarios |
+| Media | Probar red intermitente e idempotencia | Sin pérdidas ni duplicados |
+| Media | Normalizar fechas desde la API | Contrato de timestamps consistente |
+| Media | Revisar advertencia de `SafeAreaView` | Migración sin regresiones |
+| Media | Revalidar con otro integrante | Evidencia reproducible |
 
-Su salida informó **35 archivos móviles revisados, 8 rutas backend y 4 archivos del servicio localizados**, con un tamaño de 139 087 bytes. **Ese archivo aún no ha sido adjuntado ni analizado aquí**: su creación no equivale a revisar compatibilidad de código. Compartirlo únicamente después de comprobar que no contiene secretos, tokens o datos personales.
+No agregar un microservicio ni un segundo sistema de identidad
+para completar la demostración.
 
-Con el reporte revisado, elaborar un mapa pantalla → endpoint → esquema y comenzar la migración de una primera pantalla sobre la base unificada acordada.
+## 9. Criterio de entrega
 
----
+Una funcionalidad se diferencia como:
 
-**Regla de colaboración:** no fusionar directamente hacia `integration/falcon-unified-api` ni empujar cambios a su referencia remota desde ramas que la siguen automáticamente. Trabajar mediante ramas de tarea, cambios acotados, pruebas y revisión compartida. Los dueños de cada módulo deben confirmar las decisiones antes de modificar interfaces compartidas.
+**Requerida → Propuesta → Implementada → Validada.**
+
+La evidencia disponible demuestra funcionamiento local de los
+recorridos descritos. La integración entre integrantes todavía
+requiere publicación controlada, revisión y reproducción.
+
+Este README debe revisarse junto con la guía oficial
+`README_EQUIPO_FALCON.md`.
+
+**Regla:** no hacer merge directo ni push sobre
+`integration/falcon-unified-api` sin revisión del equipo.
