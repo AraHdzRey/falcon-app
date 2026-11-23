@@ -99,8 +99,13 @@ export const createPostgresRepository = (
       await pool.query(
         `INSERT INTO auditoria_eventos
            (id, evento, actor_usuario_id, entidad, entidad_id, detalles)
-         VALUES ($1, 'ADMIN_LOGIN', $2, 'session', $2::text, $3::jsonb)`,
-        [randomUUID(), user.userId, JSON.stringify({ role: user.role })],
+         VALUES ($1, 'ADMIN_LOGIN', $2, 'session', $3, $4::jsonb)`,
+        [
+          randomUUID(),
+          user.userId,
+          String(user.userId),
+          JSON.stringify({ role: user.role }),
+        ],
       );
     }
     return { user };
