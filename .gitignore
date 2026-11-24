@@ -1,0 +1,56 @@
+# ==================================================
+# FALCON - Reglas generales de exclusión de Git
+# ==================================================
+
+# Dependencias de Node.js
+node_modules/
+
+# Variables de entorno y configuraciones privadas
+.env
+.env.*
+!.env.example
+!.env.test.example
+.npmrc
+
+# Claves privadas y certificados
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.p8
+*.mobileprovision
+
+# Registros y archivos temporales
+*.log
+*.tsbuildinfo
+*.dump
+*.backup
+coverage/
+tmp/
+temp/
+.cache/
+postgres-data/
+pgdata/
+
+# Expo y React Native
+.expo/
+.expo-shared/
+web-build/
+
+# Compilaciones generadas
+dist/
+build/
+
+# Bases de datos locales
+*.sqlite
+*.sqlite3
+*.db
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db
+
+# Configuraciones locales de Android
+android/local.properties
