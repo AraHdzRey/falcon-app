@@ -11,6 +11,7 @@ import type {
   ComplaintView,
   DirectoryFilters,
   ModulesRepository,
+  NewsFilters,
   NewsView,
   ProfileView,
 } from '../types/modules';
@@ -219,7 +220,7 @@ const withTransaction = async <T>(
 export const createModulesRepository = (pool: Pool): ModulesRepository => ({
   async listDirectory(filters: DirectoryFilters): Promise<CollaboratorView[]> {
     const search = filters.search ? `%${filters.search}%` : null;
-    const area = filters.area ?? null;
+    const area = filters.area ? `%${filters.area}%` : null;
     const result = await pool.query<CollaboratorRow>(
       `${collaboratorSelect}
        WHERE c.activo = TRUE
@@ -437,13 +438,22 @@ export const createModulesRepository = (pool: Pool): ModulesRepository => ({
     });
   },
 
-  async listNews() {
-    const result = await pool.query<NewsView>(`
-      SELECT id::text, titulo AS title, contenido AS body, activo AS active,
-             version::int, creado_en::text AS "createdAt",
-             actualizado_en::text AS "updatedAt"
-      FROM noticias WHERE activo = TRUE ORDER BY actualizado_en DESC, id
-    `);
+  async listNews(filters: NewsFilters = {}) {
+    const escapedSearch = filters.search
+      ? `%${filters.search.replace(/[\\%_]/g, '\\$&')}%`
+      : null;
+    const result = await pool.query<NewsView>(
+      `SELECT id::text, titulo AS title, contenido AS body, activo AS active,
+              version::int, creado_en::text AS "createdAt",
+              actualizado_en::text AS "updatedAt"
+       FROM noticias
+       WHERE activo = TRUE
+         AND ($1::text IS NULL OR
+              titulo ILIKE $1 ESCAPE '\\' OR
+              contenido ILIKE $1 ESCAPE '\\')
+       ORDER BY actualizado_en DESC, id`,
+      [escapedSearch],
+    );
     return result.rows;
   },
 

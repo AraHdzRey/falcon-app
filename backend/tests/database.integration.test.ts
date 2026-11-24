@@ -37,6 +37,21 @@ test(
     assert.equal(validAdmin.body.user.role, 'administrador');
     assert.equal('passwordHash' in validAdmin.body.user, false);
     const adminToken = String(validAdmin.body.token);
+    const adminUserId = Number(validAdmin.body.user.id);
+    const adminLoginAudit = await pool.query<{
+      actorUserId: string;
+      entityId: string;
+    }>(
+      `SELECT actor_usuario_id::text AS "actorUserId",
+              entidad_id AS "entityId"
+       FROM auditoria_eventos
+       WHERE evento = 'ADMIN_LOGIN' AND actor_usuario_id = $1
+       ORDER BY creado_en DESC
+       LIMIT 1`,
+      [adminUserId],
+    );
+    assert.equal(adminLoginAudit.rows[0]?.actorUserId, String(adminUserId));
+    assert.equal(adminLoginAudit.rows[0]?.entityId, String(adminUserId));
 
     await request(app)
       .post('/auth/login')
@@ -96,6 +111,12 @@ test(
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
     assert.ok(directory.body.items.length > 0);
+    assert.ok(
+      directory.body.items.every(
+        (item: { area?: unknown }) =>
+          typeof item.area === 'string' && item.area.toLowerCase().includes('ti'),
+      ),
+    );
     assert.doesNotMatch(JSON.stringify(directory.body), /password|tokenVersion|curp|rfc/i);
 
     const syntheticEmployee = `QA${Date.now().toString(36).toUpperCase()}`;

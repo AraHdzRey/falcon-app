@@ -18,9 +18,13 @@ const app = createApp({
   corsOrigins: config.corsOrigins,
 });
 
-const server = app.listen(config.port, config.host, () => {
+// Physical Expo clients reach the development API through the active LAN address.
+const listenHost =
+  config.nodeEnv === 'development' ? '0.0.0.0' : config.host;
+
+const server = app.listen(config.port, listenHost, () => {
   console.log(
-    `FALCÓN Local API escuchando en http://${config.host}:${config.port}`,
+    `FALCÓN Local API escuchando en http://${listenHost}:${config.port}`,
   );
   console.log('PostgreSQL configurado exclusivamente en el host local');
 });
