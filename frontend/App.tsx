@@ -17,6 +17,8 @@ import { adaptDirectory, type Colaborador } from './src/features/directory/model
 import DirectorioScreen from './src/screens/directorio.screen';
 import PerfilColaboradorScreen from './src/screens/perfil-colaborador.screen';
 import NoticiasScreen from './src/screens/noticias.screen';
+import InicioScreen from './src/screens/inicio.screen';
+import MiPerfilScreen from './src/screens/mi-perfil.screen';
 import DetalleNoticiaScreen from './src/screens/detalle-noticia.screen';
 import type { NewsItem , LocalDashboard } from './src/sync/types';
 import {
@@ -57,7 +59,7 @@ export default function App() {
   const syncInProgress = useRef(new Set<number>());
   const sessionRef = useRef<StoredSession | null>(null);
   const logoutInProgress = useRef(false);
-  const [panel, setPanel] = useState<'inicio' | 'directorio' | 'perfil' | 'noticias' | 'noticia'>('inicio');
+  const [panel, setPanel] = useState<'inicio' | 'directorio' | 'perfil' | 'noticias' | 'noticia' | 'mi-perfil' | 'mas'>('inicio');
   const [directoryPeople, setDirectoryPeople] = useState<Colaborador[]>([]);
   const [directoryOrigin, setDirectoryOrigin] = useState<'api' | 'cache'>('cache');
   const [selectedPerson, setSelectedPerson] = useState<Colaborador | null>(null);
@@ -272,14 +274,16 @@ export default function App() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <Image
-          source={require('./assets/imagen-login.png')}
-          style={styles.image}
-          resizeMode="contain"
-          accessibilityLabel="Identidad visual FALCÓN"
-        />
+        {!session && (
+          <Image
+            source={require('./assets/imagen-login.png')}
+            style={styles.image}
+            resizeMode="contain"
+            accessibilityLabel="Identidad visual FALCÓN"
+          />
+        )}
 
-        {session && panel !== 'inicio' ? (
+        {session && panel !== 'inicio' && panel !== 'mas' ? (
           <View>
             <TouchableOpacity style={styles.secondaryButton} onPress={() => setPanel('inicio')} accessibilityRole="button">
               <Text style={styles.secondaryButtonText}>← Inicio</Text>
@@ -305,13 +309,35 @@ export default function App() {
               />
             ) : panel === 'noticia' && selectedNews ? (
               <DetalleNoticiaScreen noticia={selectedNews} onVolver={() => setPanel('noticias')} />
+            ) : panel === 'mi-perfil' ? (
+              <MiPerfilScreen
+                name={session.user.name}
+                employeeNumber={session.user.employeeNumber}
+                role={session.user.role}
+              />
             ) : null}
           </View>
+        ) : session && panel === 'inicio' ? (
+          <InicioScreen
+            name={session.user.name}
+            newsCount={dashboard.news.length}
+            latestNewsTitle={dashboard.news[0]?.title}
+            onDirectory={() => void openDirectory(session)}
+            onNews={() => setPanel('noticias')}
+            onProfile={() => setPanel('mi-perfil')}
+            onComplaints={() =>
+              Alert.alert(
+                'Quejas',
+                'El módulo todavía no está disponible en esta versión del frontend.',
+              )
+            }
+          />
         ) : session ? (
           <>
             <View style={styles.card}>
-              <Text style={styles.title}>Sesión activa</Text>
-              <Text style={styles.name}>{session.user.name}</Text>
+              <Text style={styles.homeEyebrow}>INSTRUMENTOS Y EQUIPOS FALCÓN</Text>
+              <Text style={styles.homeTitle}>Nuestra comunidad</Text>
+              <Text style={styles.homeName}>Bienvenido, {session.user.name}</Text>
               <Text style={styles.detail}>ID: {session.user.employeeNumber}</Text>
               <Text style={styles.detail}>Rol: {session.user.role}</Text>
               {connectivity === 'offline' && (
@@ -320,16 +346,16 @@ export default function App() {
                   requiere que la API vuelva a estar disponible.
                 </Text>
               )}
-              <View style={styles.metrics}>
-                <Text style={styles.metric}>Directorio: {dashboard.directory.length}</Text>
-                <Text style={styles.metric}>Noticias: {dashboard.news.length}</Text>
-                <Text style={styles.metric}>Pendientes: {dashboard.pendingCount}</Text>
+              <View style={styles.homeMetrics}>
+                <Text style={styles.homeMetric}>Colaboradores: {dashboard.directory.length}</Text>
+                <Text style={styles.homeMetric}>Noticias: {dashboard.news.length}</Text>
+                <Text style={styles.homeMetric}>Por sincronizar: {dashboard.pendingCount}</Text>
               </View>
-              <TouchableOpacity style={styles.secondaryButton} onPress={() => void openDirectory(session)} accessibilityRole="button">
-                <Text style={styles.secondaryButtonText}>Ver Directorio de colaboradores</Text>
+              <TouchableOpacity style={styles.homeAction} onPress={() => void openDirectory(session)} accessibilityRole="button">
+                <Text style={styles.homeActionText}>Directorio de colaboradores  ›</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.secondaryButton} onPress={() => setPanel('noticias')} accessibilityRole="button">
-                <Text style={styles.secondaryButtonText}>Ver Noticias</Text>
+              <TouchableOpacity style={styles.homeAction} onPress={() => setPanel('noticias')} accessibilityRole="button">
+                <Text style={styles.homeActionText}>Noticias institucionales  ›</Text>
               </TouchableOpacity>
               {dashboard.conflictCount > 0 && (
                 <Text style={styles.conflict}>
@@ -456,11 +482,148 @@ export default function App() {
           </View>
         )}
       </ScrollView>
+      {session && (
+        <View style={styles.bottomNav}>
+          {([
+            ['inicio', '⌂', 'Inicio'],
+            ['directorio', '♧', 'Directorio'],
+            ['mi-perfil', '♙', 'Tu cuenta'],
+            ['noticias', '▤', 'Noticias'],
+            ['mas', '☰', 'Más'],
+          ] as const).map(([destination, symbol, label]) => {
+            const selected =
+              panel === destination ||
+              (destination === 'directorio' && panel === 'perfil') ||
+              (destination === 'noticias' && panel === 'noticia');
+            return (
+              <TouchableOpacity
+                key={destination}
+                style={styles.navItem}
+                onPress={() => {
+                  if (destination === 'directorio') {
+                    void openDirectory(session);
+                  } else {
+                    setPanel(destination);
+                  }
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={label}
+                accessibilityState={{ selected }}
+              >
+                <Text style={[styles.navIcon, selected && styles.navSelected]}>{symbol}</Text>
+                <Text style={[styles.navText, selected && styles.navSelected]}>
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  bottomNav: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E2E2E2',
+    paddingVertical: 7,
+    paddingHorizontal: 6,
+  },
+  navItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 49,
+  },
+  navIcon: {
+    fontSize: 21,
+    color: '#535A64',
+  },
+  navText: {
+    fontSize: 10,
+    color: '#535A64',
+    marginTop: 2,
+  },
+  navSelected: {
+    color: '#B71C1C',
+    fontWeight: '800',
+  },
+  profileName: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#8E1616',
+    marginTop: 20,
+  },
+  profileDetail: {
+    fontSize: 16,
+    color: '#444444',
+    marginTop: 16,
+  },
+  profileNote: {
+    fontSize: 14,
+    color: '#666666',
+    marginTop: 28,
+    lineHeight: 21,
+  },
+  homeImage: {
+    width: 170,
+    height: 72,
+  },
+  homeEyebrow: {
+    color: '#8E1616',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+    textAlign: 'center',
+  },
+  homeTitle: {
+    color: '#222222',
+    fontSize: 26,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginTop: 7,
+  },
+  homeName: {
+    color: '#8E1616',
+    fontSize: 19,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: 14,
+    marginBottom: 7,
+  },
+  homeMetrics: {
+    marginTop: 20,
+    marginBottom: 6,
+    padding: 14,
+    gap: 9,
+    borderRadius: 12,
+    backgroundColor: '#F5F5F5',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  homeMetric: {
+    color: '#444444',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  homeAction: {
+    backgroundColor: '#B71C1C',
+    borderRadius: 12,
+    minHeight: 56,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 13,
+  },
+  homeActionText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
   safe: { flex: 1, backgroundColor: '#F2F2F2' },
   header: {
     backgroundColor: '#7A0010',
