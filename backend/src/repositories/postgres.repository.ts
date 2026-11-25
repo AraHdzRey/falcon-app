@@ -150,42 +150,50 @@ export const createPostgresRepository = (
     user: SessionUser,
     sinceVersion: number,
   ): Promise<SyncSnapshot> {
-    const [stateResult, directoryResult, newsResult] = await Promise.all([
-      pool.query<{ version: string }>(
-        'SELECT version::text FROM sync_state WHERE id = 1',
-      ),
-      pool.query<DirectoryEntry>(`
-        SELECT
-          c.id::int AS id,
-          c.numero_empleado AS "employeeId",
-          c.nombre AS name,
-          COALESCE(
-            (ARRAY_AGG(r.codigo ORDER BY ur.es_principal DESC, r.id)
-              FILTER (WHERE r.codigo IS NOT NULL))[1],
-            'colaborador'
-          ) AS role,
-          c.actualizado_en::text AS "updatedAt"
-        FROM colaboradores AS c
-        LEFT JOIN usuarios AS u ON u.colaborador_id = c.id AND u.activo = TRUE
-        LEFT JOIN usuario_roles AS ur ON ur.usuario_id = u.id
-        LEFT JOIN roles AS r ON r.id = ur.rol_id
-        WHERE c.activo = TRUE
-        GROUP BY c.id
-        ORDER BY c.nombre, c.id
-      `),
-      pool.query<NewsItem>(
-        `SELECT
-           id::text,
-           titulo AS title,
-           contenido AS body,
-           version::int,
-           actualizado_en::text AS "updatedAt"
-         FROM noticias
-         WHERE activo = TRUE AND version > $1
-         ORDER BY version, id`,
-        [sinceVersion],
-      ),
-    ]);
+    const [stateResult, directoryResult, newsResult, removedNewsResult] =
+      await Promise.all([
+        pool.query<{ version: string }>(
+          'SELECT version::text FROM sync_state WHERE id = 1',
+        ),
+        pool.query<DirectoryEntry>(`
+          SELECT
+            c.id::int AS id,
+            c.numero_empleado AS "employeeId",
+            c.nombre AS name,
+            COALESCE(
+              (ARRAY_AGG(r.codigo ORDER BY ur.es_principal DESC, r.id)
+                FILTER (WHERE r.codigo IS NOT NULL))[1],
+              'colaborador'
+            ) AS role,
+            c.actualizado_en::text AS "updatedAt"
+          FROM colaboradores AS c
+          LEFT JOIN usuarios AS u ON u.colaborador_id = c.id AND u.activo = TRUE
+          LEFT JOIN usuario_roles AS ur ON ur.usuario_id = u.id
+          LEFT JOIN roles AS r ON r.id = ur.rol_id
+          WHERE c.activo = TRUE
+          GROUP BY c.id
+          ORDER BY c.nombre, c.id
+        `),
+        pool.query<NewsItem>(
+          `SELECT
+             id::text,
+             titulo AS title,
+             contenido AS body,
+             version::int,
+             actualizado_en::text AS "updatedAt"
+           FROM noticias
+           WHERE activo = TRUE AND version > $1
+           ORDER BY version, id`,
+          [sinceVersion],
+        ),
+        pool.query<{ id: string }>(
+          `SELECT id::text
+           FROM noticias
+           WHERE activo = FALSE AND version > $1
+           ORDER BY version, id`,
+          [sinceVersion],
+        ),
+      ]);
     return {
       serverVersion: Number(stateResult.rows[0]?.version ?? 0),
       profile: {
@@ -197,6 +205,7 @@ export const createPostgresRepository = (
       },
       directory: directoryResult.rows,
       news: newsResult.rows,
+      removedNewsIds: removedNewsResult.rows.map((row) => row.id),
     };
   },
 

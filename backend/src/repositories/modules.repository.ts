@@ -526,6 +526,38 @@ export const createModulesRepository = (pool: Pool): ModulesRepository => ({
     });
   },
 
+  async deactivateNews(id, actor) {
+    return withTransaction(pool, async (client) => {
+      const existing = await client.query(
+        'SELECT 1 FROM noticias WHERE id = $1 AND activo = TRUE FOR UPDATE',
+        [id],
+      );
+      if (!existing.rows[0]) return null;
+      const state = await client.query<{ version: string }>(
+        `UPDATE sync_state SET version = version + 1, actualizado_en = NOW()
+         WHERE id = 1 RETURNING version::text`,
+      );
+      const result = await client.query<NewsView>(
+        `UPDATE noticias
+         SET activo = FALSE, version = $2, actualizado_en = NOW()
+         WHERE id = $1
+         RETURNING id::text, titulo AS title, contenido AS body,
+                   activo AS active, version::int,
+                   creado_en::text AS "createdAt",
+                   actualizado_en::text AS "updatedAt"`,
+        [id, Number(state.rows[0]!.version)],
+      );
+      await appendAudit(client, {
+        event: 'NEWS_DEACTIVATED',
+        actorUserId: actor.userId,
+        entity: 'news',
+        entityId: id,
+        details: { version: result.rows[0]!.version },
+      });
+      return result.rows[0]!;
+    });
+  },
+
   async listComplaintCategories() {
     const result = await pool.query<ComplaintCategoryView>(`
       SELECT codigo AS code, nombre AS name

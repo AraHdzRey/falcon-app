@@ -47,6 +47,7 @@ export interface SyncSnapshot {
   };
   directory: DirectoryEntry[];
   news: NewsItem[];
+  removedNewsIds: string[];
 }
 
 export interface SyncRepository {
