@@ -12,8 +12,17 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { getMe, login, logout, listDirectory } from './src/api/client';
+import {
+  deactivateNews,
+  getMe,
+  login,
+  logout,
+  listDirectory,
+  listNews,
+  updateNews,
+} from './src/api/client';
 import { adaptDirectory, type Colaborador } from './src/features/directory/model';
+import type { NewsFormInput } from './src/features/news/model';
 import DirectorioScreen from './src/screens/directorio.screen';
 import PerfilColaboradorScreen from './src/screens/perfil-colaborador.screen';
 import NoticiasScreen from './src/screens/noticias.screen';
@@ -26,6 +35,7 @@ import {
   initializeDatabase,
   loadLocalDashboard,
   queueDemoNews,
+  removeCachedNews,
 } from './src/storage/database';
 import {
   clearSecureSession,
@@ -64,6 +74,7 @@ export default function App() {
   const [directoryOrigin, setDirectoryOrigin] = useState<'api' | 'cache'>('cache');
   const [selectedPerson, setSelectedPerson] = useState<Colaborador | null>(null);
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
+  const [hasConnection, setHasConnection] = useState(false);
 
   const refreshLocal = useCallback(async (activeSession: StoredSession) => {
     const local = await loadLocalDashboard(activeSession.user.id);
@@ -88,11 +99,17 @@ export default function App() {
         await runSynchronization(activeSession.token, userId, isCurrent);
         if (!isCurrent()) return;
         await refreshLocal(activeSession);
-        if (isCurrent()) setConnectivity('online');
+        if (isCurrent()) {
+          setHasConnection(true);
+          setConnectivity('online');
+        }
       } catch {
         if (isCurrent()) {
           await refreshLocal(activeSession);
-          if (isCurrent()) setConnectivity('offline');
+          if (isCurrent()) {
+            setHasConnection(false);
+            setConnectivity('offline');
+          }
         }
       } finally {
         syncInProgress.current.delete(userId);
@@ -150,6 +167,7 @@ export default function App() {
       setDashboard(EMPTY_DASHBOARD);
       void clearSecureSession();
       setSession(null);
+      setHasConnection(false);
       setConnectivity('offline');
       setSessionMessage(
         'La sesión local expiró. Se requiere conexión para volver a iniciar sesión.',
@@ -215,6 +233,7 @@ export default function App() {
       await clearSecureSession();
       logoutInProgress.current = false;
       setSession(null);
+      setHasConnection(false);
       setConnectivity('offline');
       setSessionMessage('Sesión cerrada en este dispositivo.');
     }
@@ -236,6 +255,76 @@ export default function App() {
     await refreshLocal(session);
     void synchronize(session);
   };
+
+  const handleCreateNews = useCallback(
+    async (input: NewsFormInput): Promise<void> => {
+      const activeSession = sessionRef.current;
+      if (
+        !activeSession ||
+        (activeSession.user.role !== 'editor_noticias' &&
+          activeSession.user.role !== 'administrador')
+      ) {
+        throw new Error('No tienes permisos para publicar noticias.');
+      }
+      await queueDemoNews(activeSession.user.id, input.title, input.body);
+      await refreshLocal(activeSession);
+      void synchronize(activeSession);
+    },
+    [refreshLocal, synchronize],
+  );
+
+  const handleSearchNews = useCallback(
+    async (search: string): Promise<NewsItem[]> => {
+      const activeSession = sessionRef.current;
+      if (!activeSession) {
+        throw new Error('Sesión no disponible.');
+      }
+      return listNews(activeSession.token, search);
+    },
+    [],
+  );
+
+  const handleEditNews = useCallback(
+    async (id: string, input: NewsFormInput): Promise<NewsItem> => {
+      const activeSession = sessionRef.current;
+      if (
+        !activeSession ||
+        (activeSession.user.role !== 'editor_noticias' &&
+          activeSession.user.role !== 'administrador')
+      ) {
+        throw new Error('No tienes permisos para editar noticias.');
+      }
+      const updated = await updateNews(activeSession.token, id, input);
+      if (sessionRef.current === activeSession) {
+        setSelectedNews(updated);
+      }
+      await synchronize(activeSession);
+      return updated;
+    },
+    [synchronize],
+  );
+
+  const handleDeactivateNews = useCallback(
+    async (id: string): Promise<void> => {
+      const activeSession = sessionRef.current;
+      if (
+        !activeSession ||
+        (activeSession.user.role !== 'editor_noticias' &&
+          activeSession.user.role !== 'administrador')
+      ) {
+        throw new Error('No tienes permisos para retirar noticias.');
+      }
+      await deactivateNews(activeSession.token, id);
+      await removeCachedNews(activeSession.user.id, id);
+      await refreshLocal(activeSession);
+      if (sessionRef.current === activeSession) {
+        setSelectedNews(null);
+        setPanel('noticias');
+      }
+      void synchronize(activeSession);
+    },
+    [refreshLocal, synchronize],
+  );
 
   const openDirectory = async (activeSession: StoredSession) => {
     if (sessionRef.current !== activeSession) return;
@@ -264,6 +353,17 @@ export default function App() {
   const canCreateNews =
     session?.user.role === 'editor_noticias' ||
     session?.user.role === 'administrador';
+
+  const activeNews = selectedNews
+    ? (() => {
+        const synced = dashboard.news.find((item) => item.id === selectedNews.id);
+        if (!synced) return selectedNews;
+        return synced.version > selectedNews.version ||
+          (selectedNews.pending && !synced.pending)
+          ? synced
+          : selectedNews;
+      })()
+    : null;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -302,13 +402,24 @@ export default function App() {
             ) : panel === 'noticias' ? (
               <NoticiasScreen
                 noticias={dashboard.news}
-                onAbrirNoticia={(id) => {
-                  const news = dashboard.news.find(item => item.id === id);
-                  if (news) { setSelectedNews(news); setPanel('noticia'); }
+                isOnline={hasConnection}
+                canCreate={canCreateNews}
+                onAbrirNoticia={(news) => {
+                  setSelectedNews(news);
+                  setPanel('noticia');
                 }}
+                onBuscarRemoto={handleSearchNews}
+                onCrearNoticia={handleCreateNews}
               />
-            ) : panel === 'noticia' && selectedNews ? (
-              <DetalleNoticiaScreen noticia={selectedNews} onVolver={() => setPanel('noticias')} />
+            ) : panel === 'noticia' && activeNews ? (
+              <DetalleNoticiaScreen
+                noticia={activeNews}
+                canEdit={canCreateNews}
+                isOnline={hasConnection}
+                onVolver={() => setPanel('noticias')}
+                onEditarNoticia={handleEditNews}
+                onRetirarNoticia={handleDeactivateNews}
+              />
             ) : panel === 'mi-perfil' ? (
               <MiPerfilScreen
                 name={session.user.name}

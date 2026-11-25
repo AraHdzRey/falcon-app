@@ -1,31 +1,287 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { COLORS } from '../constants/colors';
 import { formatNewsDate } from '../features/news/date';
+import {
+  NEWS_BODY_MAX_LENGTH,
+  NEWS_TITLE_MAX_LENGTH,
+  validateNewsForm,
+  type NewsFormInput,
+} from '../features/news/model';
 import type { NewsItem } from '../sync/types';
 
-type Props = { noticia: NewsItem; onVolver: () => void };
+type Props = {
+  noticia: NewsItem;
+  canEdit: boolean;
+  isOnline: boolean;
+  onVolver: () => void;
+  onEditarNoticia: (id: string, input: NewsFormInput) => Promise<NewsItem>;
+  onRetirarNoticia: (id: string) => Promise<void>;
+};
 
-export default function DetalleNoticiaScreen({ noticia, onVolver }: Props) {
+export default function DetalleNoticiaScreen({
+  noticia,
+  canEdit,
+  isOnline,
+  onVolver,
+  onEditarNoticia,
+  onRetirarNoticia,
+}: Props) {
+  const [modalVisible, setModalVisible] = useState(false);
+  const [titulo, setTitulo] = useState(noticia.title);
+  const [contenido, setContenido] = useState(noticia.body);
+  const [errorFormulario, setErrorFormulario] = useState<string | null>(null);
+  const [errorAccion, setErrorAccion] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+  const [retirando, setRetirando] = useState(false);
+
+  const edicionBloqueada = Boolean(noticia.pending) || !isOnline;
+  const accionesDeshabilitadas = edicionBloqueada || guardando || retirando;
+
+  const abrirModalEditar = () => {
+    if (accionesDeshabilitadas) return;
+    setTitulo(noticia.title);
+    setContenido(noticia.body);
+    setErrorFormulario(null);
+    setErrorAccion(null);
+    setModalVisible(true);
+  };
+
+  const cerrarModalEditar = () => {
+    if (guardando) return;
+    setModalVisible(false);
+    setErrorFormulario(null);
+  };
+
+  const handleGuardar = async () => {
+    const validacion = validateNewsForm(titulo, contenido);
+    if (!validacion.ok) {
+      setErrorFormulario(validacion.error);
+      return;
+    }
+
+    setErrorFormulario(null);
+    setGuardando(true);
+    try {
+      await onEditarNoticia(noticia.id, validacion.value);
+      setModalVisible(false);
+    } catch (error) {
+      setErrorFormulario(
+        error instanceof Error
+          ? error.message
+          : 'No se pudo actualizar la noticia.',
+      );
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const ejecutarRetiro = async () => {
+    setErrorAccion(null);
+    setRetirando(true);
+    try {
+      await onRetirarNoticia(noticia.id);
+    } catch (error) {
+      setErrorAccion(
+        error instanceof Error
+          ? error.message
+          : 'No se pudo retirar la noticia.',
+      );
+    } finally {
+      setRetirando(false);
+    }
+  };
+
+  const confirmarRetiro = () => {
+    if (accionesDeshabilitadas) return;
+    Alert.alert(
+      'Retirar noticia',
+      '¿Retirar esta noticia? Dejará de mostrarse para todos los colaboradores.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Retirar',
+          style: 'destructive',
+          onPress: () => {
+            void ejecutarRetiro();
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <View style={[styles.pantalla, styles.contenido]}>
-      <Pressable onPress={onVolver} style={styles.volver} accessibilityRole="button">
+      <Pressable
+        onPress={onVolver}
+        style={styles.volver}
+        accessibilityRole="button"
+      >
         <Text style={styles.textoVolver}>← Volver a Noticias</Text>
       </Pressable>
-      <Text style={styles.encabezado}>Detalle de noticia</Text>
+
+      <View style={styles.barraEncabezado}>
+        <Text style={styles.encabezado}>Detalle de noticia</Text>
+        {canEdit && (
+          <View style={styles.accionesEncabezado}>
+            <Pressable
+              style={[
+                styles.botonEditar,
+                accionesDeshabilitadas && styles.botonEditarDeshabilitado,
+              ]}
+              onPress={abrirModalEditar}
+              disabled={accionesDeshabilitadas}
+              accessibilityRole="button"
+              accessibilityLabel="Editar noticia"
+            >
+              <Text style={styles.textoBotonEditar}>Editar</Text>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.botonRetirar,
+                accionesDeshabilitadas && styles.botonEditarDeshabilitado,
+              ]}
+              onPress={confirmarRetiro}
+              disabled={accionesDeshabilitadas}
+              accessibilityRole="button"
+              accessibilityLabel="Retirar noticia"
+            >
+              {retirando ? (
+                <ActivityIndicator size="small" color={COLORS.primaryDark} />
+              ) : (
+                <Text style={styles.textoBotonRetirar}>Retirar noticia</Text>
+              )}
+            </Pressable>
+          </View>
+        )}
+      </View>
+
+      {canEdit && edicionBloqueada && (
+        <View style={styles.avisoBloqueo}>
+          <Text style={styles.textoAvisoBloqueo}>
+            {noticia.pending
+              ? 'Esta noticia todavía está pendiente de sincronizar. Para editarla o retirarla se requiere conexión y que esté sincronizada con el servidor.'
+              : 'Para editar o retirar esta noticia se requiere conexión activa con el servidor.'}
+          </Text>
+        </View>
+      )}
+
+      {errorAccion && (
+        <View style={styles.avisoError}>
+          <Text style={styles.textoAvisoError}>{errorAccion}</Text>
+        </View>
+      )}
+
       <View style={styles.tarjeta}>
-        <View style={[styles.imagen, { alignItems: 'center', justifyContent: 'center' }]}>
-          <Text style={{ color: COLORS.primary, fontSize: 24, fontWeight: '800' }}>FALCÓN</Text>
+        <View
+          style={[
+            styles.imagen,
+            { alignItems: 'center', justifyContent: 'center' },
+          ]}
+        >
+          <Text
+            style={{ color: COLORS.primary, fontSize: 24, fontWeight: '800' }}
+          >
+            FALCÓN
+          </Text>
         </View>
         <View style={styles.informacion}>
           <Text style={styles.titulo}>{noticia.title}</Text>
           <View style={styles.metadatos}>
-            <Text style={styles.textoFecha}>{formatNewsDate(noticia.updatedAt, true)}</Text>
-            {noticia.pending && <Text style={styles.textoEtiqueta}>Pendiente de sincronización</Text>}
+            <Text style={styles.textoFecha}>
+              {formatNewsDate(noticia.updatedAt, true)}
+            </Text>
+            {noticia.pending && (
+              <Text style={styles.textoEtiqueta}>
+                Pendiente de sincronización
+              </Text>
+            )}
           </View>
           <View style={styles.separador} />
           <Text style={styles.contenidoNoticia}>{noticia.body}</Text>
         </View>
       </View>
+
+      <Modal
+        visible={modalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={cerrarModalEditar}
+      >
+        <View style={styles.modalFondo}>
+          <View style={styles.modalTarjeta}>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              <Text style={styles.modalTitulo}>Editar noticia</Text>
+
+              <Text style={styles.campoEtiqueta}>
+                Título ({titulo.trim().length}/{NEWS_TITLE_MAX_LENGTH})
+              </Text>
+              <TextInput
+                style={styles.campoEntrada}
+                value={titulo}
+                onChangeText={setTitulo}
+                placeholder="Título de la noticia"
+                placeholderTextColor={COLORS.textSecondary}
+                maxLength={NEWS_TITLE_MAX_LENGTH}
+                editable={!guardando}
+                accessibilityLabel="Editar título de la noticia"
+              />
+
+              <Text style={styles.campoEtiqueta}>
+                Contenido ({contenido.trim().length}/{NEWS_BODY_MAX_LENGTH})
+              </Text>
+              <TextInput
+                style={[styles.campoEntrada, styles.campoMultilinea]}
+                value={contenido}
+                onChangeText={setContenido}
+                placeholder="Contenido completo de la noticia"
+                placeholderTextColor={COLORS.textSecondary}
+                maxLength={NEWS_BODY_MAX_LENGTH}
+                multiline
+                editable={!guardando}
+                accessibilityLabel="Editar contenido de la noticia"
+              />
+
+              {errorFormulario && (
+                <Text style={styles.errorTexto}>{errorFormulario}</Text>
+              )}
+
+              <View style={styles.modalAcciones}>
+                <Pressable
+                  style={styles.botonSecundario}
+                  onPress={cerrarModalEditar}
+                  disabled={guardando}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.textoSecundario}>Cancelar</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.botonPrimario}
+                  onPress={() => void handleGuardar()}
+                  disabled={guardando}
+                  accessibilityRole="button"
+                >
+                  {guardando ? (
+                    <ActivityIndicator size="small" color={COLORS.background} />
+                  ) : (
+                    <Text style={styles.textoPrimario}>Guardar cambios</Text>
+                  )}
+                </Pressable>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -51,11 +307,76 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  barraEncabezado: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 14,
+  },
+  accionesEncabezado: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   encabezado: {
     fontSize: 21,
     fontWeight: '800',
     color: COLORS.text,
-    marginBottom: 16,
+  },
+  botonEditar: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 8,
+  },
+  botonRetirar: {
+    borderWidth: 1,
+    borderColor: COLORS.primaryDark,
+    backgroundColor: COLORS.background,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    minWidth: 112,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  botonEditarDeshabilitado: {
+    opacity: 0.45,
+  },
+  textoBotonEditar: {
+    color: COLORS.background,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  textoBotonRetirar: {
+    color: COLORS.primaryDark,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  avisoBloqueo: {
+    backgroundColor: '#FFF4D6',
+    borderRadius: 9,
+    padding: 12,
+    marginBottom: 14,
+  },
+  textoAvisoBloqueo: {
+    color: '#6A4A00',
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  avisoError: {
+    backgroundColor: '#FDECEC',
+    borderRadius: 9,
+    padding: 12,
+    marginBottom: 14,
+  },
+  textoAvisoError: {
+    color: COLORS.error,
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 18,
   },
   tarjeta: {
     borderWidth: 1,
@@ -86,20 +407,9 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 10,
   },
-  fecha: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-  },
   textoFecha: {
     fontSize: 12,
     color: COLORS.textSecondary,
-  },
-  etiqueta: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 8,
-    backgroundColor: COLORS.surface,
   },
   textoEtiqueta: {
     fontSize: 12,
@@ -116,19 +426,81 @@ const styles = StyleSheet.create({
     lineHeight: 23,
     color: COLORS.text,
   },
-  aviso: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 9,
-    padding: 13,
-    marginTop: 17,
-    borderRadius: 9,
-    backgroundColor: COLORS.surface,
-  },
-  textoAviso: {
+  modalFondo: {
     flex: 1,
-    color: COLORS.textSecondary,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    justifyContent: 'center',
+    padding: 18,
+  },
+  modalTarjeta: {
+    backgroundColor: COLORS.background,
+    borderRadius: 14,
+    padding: 18,
+    maxHeight: '85%',
+  },
+  modalTitulo: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: COLORS.text,
+    marginBottom: 12,
+  },
+  campoEtiqueta: {
     fontSize: 12,
-    lineHeight: 18,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginBottom: 6,
+    marginTop: 6,
+  },
+  campoEntrada: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: COLORS.text,
+    marginBottom: 10,
+  },
+  campoMultilinea: {
+    minHeight: 120,
+    textAlignVertical: 'top',
+  },
+  errorTexto: {
+    color: COLORS.error,
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 10,
+  },
+  modalAcciones: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 8,
+  },
+  botonSecundario: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    borderRadius: 10,
+    minHeight: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  textoSecundario: {
+    color: COLORS.primaryDark,
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  botonPrimario: {
+    flex: 1,
+    backgroundColor: COLORS.primary,
+    borderRadius: 10,
+    minHeight: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  textoPrimario: {
+    color: COLORS.background,
+    fontWeight: '700',
+    fontSize: 14,
   },
 });

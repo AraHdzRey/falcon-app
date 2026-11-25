@@ -285,6 +285,12 @@ export const applySyncSnapshot = async (
         news.updatedAt,
       );
     }
+    for (const removedId of snapshot.removedNewsIds ?? []) {
+      await transaction.runAsync(
+        'DELETE FROM news_cache WHERE id = ? AND pending = 0',
+        removedId,
+      );
+    }
     await transaction.runAsync(
       `INSERT INTO sync_metadata (key, value) VALUES ('server_version', ?)
        ON CONFLICT (key) DO UPDATE SET value = excluded.value`,
@@ -296,6 +302,17 @@ export const applySyncSnapshot = async (
       now,
     );
   });
+};
+
+export const removeCachedNews = async (
+  userId: number,
+  id: string,
+): Promise<void> => {
+  const db = await database(userId);
+  await db.runAsync(
+    'DELETE FROM news_cache WHERE id = ? AND pending = 0',
+    id,
+  );
 };
 
 export const markPendingSyncFailure = async (userId: number, message: string): Promise<void> => {

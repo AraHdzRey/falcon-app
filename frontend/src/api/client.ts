@@ -1,5 +1,13 @@
 import type { DirectoryApiEntry } from '../features/directory/model';
+import {
+  adaptNewsItem,
+  normalizeNewsSearch,
+  validateNewsForm,
+  type NewsApiItem,
+  type NewsFormInput,
+} from '../features/news/model';
 import type {
+  NewsItem,
   OperationResult,
   OutboxOperation,
   SyncSnapshot,
@@ -177,11 +185,22 @@ export const pullSyncChanges = async (
     !('directory' in body) ||
     !Array.isArray(body.directory) ||
     !('news' in body) ||
-    !Array.isArray(body.news)
+    !Array.isArray(body.news) ||
+    ('removedNewsIds' in body &&
+      body.removedNewsIds !== undefined &&
+      (!Array.isArray(body.removedNewsIds) ||
+        !body.removedNewsIds.every((item: unknown) => typeof item === 'string')))
   ) {
     throw new Error('La API devolvió una sincronización inválida.');
   }
-  return body as SyncSnapshot;
+  const removedNewsIds =
+    'removedNewsIds' in body && Array.isArray(body.removedNewsIds)
+      ? (body.removedNewsIds as string[])
+      : [];
+  return {
+    ...(body as SyncSnapshot),
+    removedNewsIds,
+  };
 };
 
 /** Listado autenticado de la API unificada. No utiliza datos ficticios. */
@@ -199,4 +218,143 @@ export const listDirectory = async (token: string): Promise<DirectoryApiEntry[]>
     throw new Error('No se pudo cargar el Directorio desde la API.');
   }
   return body.items as DirectoryApiEntry[];
+};
+
+const isNewsApiItem = (item: unknown): item is NewsApiItem =>
+  typeof item === 'object' &&
+  item !== null &&
+  'id' in item &&
+  typeof item.id === 'string' &&
+  'title' in item &&
+  typeof item.title === 'string' &&
+  'body' in item &&
+  typeof item.body === 'string' &&
+  'version' in item &&
+  typeof item.version === 'number' &&
+  'updatedAt' in item &&
+  typeof item.updatedAt === 'string';
+
+const readErrorMessage = (body: unknown, fallback: string): string =>
+  typeof body === 'object' &&
+  body !== null &&
+  'message' in body &&
+  typeof body.message === 'string' &&
+  body.message.trim().length > 0
+    ? body.message
+    : fallback;
+
+export const listNews = async (
+  token: string,
+  search?: string,
+): Promise<NewsItem[]> => {
+  let query = '';
+  if (search !== undefined) {
+    const normalized = normalizeNewsSearch(search);
+    if (!normalized.ok) {
+      throw new Error(normalized.error);
+    }
+    if (normalized.value) {
+      query = `?search=${encodeURIComponent(normalized.value)}`;
+    }
+  }
+
+  const response = await apiFetch(`${apiBaseUrl()}/news${query}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const body = await readJson(response);
+  if (!response.ok) {
+    throw new Error(
+      readErrorMessage(body, 'No se pudieron cargar las noticias desde la API.'),
+    );
+  }
+  if (
+    typeof body !== 'object' ||
+    body === null ||
+    !('items' in body) ||
+    !Array.isArray(body.items) ||
+    !body.items.every(isNewsApiItem)
+  ) {
+    throw new Error('La API devolvió un listado de noticias inválido.');
+  }
+  return body.items.map(adaptNewsItem);
+};
+
+export const updateNews = async (
+  token: string,
+  id: string,
+  payload: NewsFormInput,
+): Promise<NewsItem> => {
+  const validated = validateNewsForm(payload.title, payload.body);
+  if (!validated.ok) {
+    throw new Error(validated.error);
+  }
+
+  const response = await apiFetch(
+    `${apiBaseUrl()}/news/${encodeURIComponent(id)}`,
+    {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(validated.value),
+    },
+  );
+  const body = await readJson(response);
+  if (!response.ok) {
+    if (response.status === 403) {
+      throw new Error('No tienes permisos para editar noticias.');
+    }
+    if (response.status === 404) {
+      throw new Error('La noticia ya no existe en el servidor.');
+    }
+    throw new Error(
+      readErrorMessage(body, 'No se pudo actualizar la noticia.'),
+    );
+  }
+  if (
+    typeof body !== 'object' ||
+    body === null ||
+    !('news' in body) ||
+    !isNewsApiItem(body.news)
+  ) {
+    throw new Error('La API devolvió una noticia actualizada inválida.');
+  }
+  return adaptNewsItem(body.news);
+};
+
+export const deactivateNews = async (
+  token: string,
+  id: string,
+): Promise<NewsItem> => {
+  const response = await apiFetch(
+    `${apiBaseUrl()}/news/${encodeURIComponent(id)}/deactivate`,
+    {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+  const body = await readJson(response);
+  if (!response.ok) {
+    if (response.status === 403) {
+      throw new Error('No tienes permisos para retirar noticias.');
+    }
+    if (response.status === 404) {
+      throw new Error('La noticia ya no existe o ya fue retirada.');
+    }
+    throw new Error(
+      readErrorMessage(body, 'No se pudo retirar la noticia.'),
+    );
+  }
+  if (
+    typeof body !== 'object' ||
+    body === null ||
+    !('news' in body) ||
+    !isNewsApiItem(body.news)
+  ) {
+    throw new Error('La API devolvió una respuesta inválida al retirar la noticia.');
+  }
+  return adaptNewsItem(body.news);
 };
