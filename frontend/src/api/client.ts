@@ -185,11 +185,22 @@ export const pullSyncChanges = async (
     !('directory' in body) ||
     !Array.isArray(body.directory) ||
     !('news' in body) ||
-    !Array.isArray(body.news)
+    !Array.isArray(body.news) ||
+    ('removedNewsIds' in body &&
+      body.removedNewsIds !== undefined &&
+      (!Array.isArray(body.removedNewsIds) ||
+        !body.removedNewsIds.every((item: unknown) => typeof item === 'string')))
   ) {
     throw new Error('La API devolvió una sincronización inválida.');
   }
-  return body as SyncSnapshot;
+  const removedNewsIds =
+    'removedNewsIds' in body && Array.isArray(body.removedNewsIds)
+      ? (body.removedNewsIds as string[])
+      : [];
+  return {
+    ...(body as SyncSnapshot),
+    removedNewsIds,
+  };
 };
 
 /** Listado autenticado de la API unificada. No utiliza datos ficticios. */
@@ -308,6 +319,42 @@ export const updateNews = async (
     !isNewsApiItem(body.news)
   ) {
     throw new Error('La API devolvió una noticia actualizada inválida.');
+  }
+  return adaptNewsItem(body.news);
+};
+
+export const deactivateNews = async (
+  token: string,
+  id: string,
+): Promise<NewsItem> => {
+  const response = await apiFetch(
+    `${apiBaseUrl()}/news/${encodeURIComponent(id)}/deactivate`,
+    {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+  const body = await readJson(response);
+  if (!response.ok) {
+    if (response.status === 403) {
+      throw new Error('No tienes permisos para retirar noticias.');
+    }
+    if (response.status === 404) {
+      throw new Error('La noticia ya no existe o ya fue retirada.');
+    }
+    throw new Error(
+      readErrorMessage(body, 'No se pudo retirar la noticia.'),
+    );
+  }
+  if (
+    typeof body !== 'object' ||
+    body === null ||
+    !('news' in body) ||
+    !isNewsApiItem(body.news)
+  ) {
+    throw new Error('La API devolvió una respuesta inválida al retirar la noticia.');
   }
   return adaptNewsItem(body.news);
 };

@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { listNews, updateNews } from '../src/api/client';
+import {
+  deactivateNews,
+  listNews,
+  pullSyncChanges,
+  updateNews,
+} from '../src/api/client';
 import {
   NEWS_BODY_MAX_LENGTH,
   NEWS_SEARCH_MAX_LENGTH,
@@ -258,4 +263,137 @@ test('updateNews envía PATCH /news/:id con title y body y maneja errores HTTP',
       body: 'Contenido actualizado',
     }),
   });
+});
+
+test('deactivateNews envía PATCH /news/:id/deactivate y maneja 200, 403 y 404', async () => {
+  const calls: Array<{
+    url: string;
+    method: string | undefined;
+    auth: string | undefined;
+  }> = [];
+
+  await withMockedFetch(
+    (async (input, init) => {
+      const headers = new Headers(init?.headers);
+      const url = String(input);
+      calls.push({
+        url,
+        method: init?.method,
+        auth: headers.get('Authorization') ?? undefined,
+      });
+
+      if (url.includes('/forbidden-id/deactivate')) {
+        return new Response(
+          JSON.stringify({ status: 'error', message: 'Permisos insuficientes' }),
+          { status: 403, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+
+      if (url.includes('/missing-id/deactivate')) {
+        return new Response(
+          JSON.stringify({ status: 'error', message: 'Noticia no encontrada' }),
+          { status: 404, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          status: 'ok',
+          news: {
+            id: sampleNews[0]!.id,
+            title: sampleNews[0]!.title,
+            body: sampleNews[0]!.body,
+            active: false,
+            version: 7,
+            createdAt: '2026-11-20T12:00:00.000Z',
+            updatedAt: '2026-11-25T14:00:00.000Z',
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    }) as typeof fetch,
+    async () => {
+      const deactivated = await deactivateNews(
+        'token-admin',
+        sampleNews[0]!.id,
+      );
+      assert.equal(deactivated.id, sampleNews[0]!.id);
+      assert.equal(deactivated.version, 7);
+      assert.equal(deactivated.pending, false);
+
+      await assert.rejects(
+        () => deactivateNews('token-colaborador', 'forbidden-id'),
+        /permisos/,
+      );
+
+      await assert.rejects(
+        () => deactivateNews('token-admin', 'missing-id'),
+        /no existe|retirada/,
+      );
+    },
+  );
+
+  assert.equal(calls.length, 3);
+  assert.deepEqual(calls[0], {
+    url: `http://192.0.2.20:3000/news/${sampleNews[0]!.id}/deactivate`,
+    method: 'PATCH',
+    auth: 'Bearer token-admin',
+  });
+});
+
+test('pullSyncChanges normaliza removedNewsIds de forma retrocompatible y rechaza formatos inválidos', async () => {
+  let mode: 'with-removed' | 'without-removed' | 'invalid-removed' =
+    'with-removed';
+
+  await withMockedFetch(
+    (async () => {
+      const basePayload = {
+        status: 'ok',
+        serverVersion: 12,
+        profile: {
+          id: 1,
+          collaboratorId: 1,
+          employeeNumber: 'ADMIN-001',
+          name: 'Admin Falcón',
+          role: 'administrador',
+        },
+        directory: [],
+        news: [],
+      };
+
+      const payload =
+        mode === 'with-removed'
+          ? {
+              ...basePayload,
+              removedNewsIds: ['20000000-0000-4000-8000-000000000001'],
+            }
+          : mode === 'without-removed'
+            ? basePayload
+            : {
+                ...basePayload,
+                removedNewsIds: [123],
+              };
+
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }) as typeof fetch,
+    async () => {
+      const withRemoved = await pullSyncChanges('token-admin', 5);
+      assert.deepEqual(withRemoved.removedNewsIds, [
+        '20000000-0000-4000-8000-000000000001',
+      ]);
+
+      mode = 'without-removed';
+      const withoutRemoved = await pullSyncChanges('token-admin', 5);
+      assert.deepEqual(withoutRemoved.removedNewsIds, []);
+
+      mode = 'invalid-removed';
+      await assert.rejects(
+        () => pullSyncChanges('token-admin', 5),
+        /sincronización inválida/,
+      );
+    },
+  );
 });

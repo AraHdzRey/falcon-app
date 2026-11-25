@@ -12,7 +12,15 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { getMe, login, logout, listDirectory, listNews, updateNews } from './src/api/client';
+import {
+  deactivateNews,
+  getMe,
+  login,
+  logout,
+  listDirectory,
+  listNews,
+  updateNews,
+} from './src/api/client';
 import { adaptDirectory, type Colaborador } from './src/features/directory/model';
 import type { NewsFormInput } from './src/features/news/model';
 import DirectorioScreen from './src/screens/directorio.screen';
@@ -27,6 +35,7 @@ import {
   initializeDatabase,
   loadLocalDashboard,
   queueDemoNews,
+  removeCachedNews,
 } from './src/storage/database';
 import {
   clearSecureSession,
@@ -295,6 +304,28 @@ export default function App() {
     [synchronize],
   );
 
+  const handleDeactivateNews = useCallback(
+    async (id: string): Promise<void> => {
+      const activeSession = sessionRef.current;
+      if (
+        !activeSession ||
+        (activeSession.user.role !== 'editor_noticias' &&
+          activeSession.user.role !== 'administrador')
+      ) {
+        throw new Error('No tienes permisos para retirar noticias.');
+      }
+      await deactivateNews(activeSession.token, id);
+      await removeCachedNews(activeSession.user.id, id);
+      await refreshLocal(activeSession);
+      if (sessionRef.current === activeSession) {
+        setSelectedNews(null);
+        setPanel('noticias');
+      }
+      void synchronize(activeSession);
+    },
+    [refreshLocal, synchronize],
+  );
+
   const openDirectory = async (activeSession: StoredSession) => {
     if (sessionRef.current !== activeSession) return;
     setDirectoryPeople(adaptDirectory(dashboard.directory));
@@ -387,6 +418,7 @@ export default function App() {
                 isOnline={hasConnection}
                 onVolver={() => setPanel('noticias')}
                 onEditarNoticia={handleEditNews}
+                onRetirarNoticia={handleDeactivateNews}
               />
             ) : panel === 'mi-perfil' ? (
               <MiPerfilScreen

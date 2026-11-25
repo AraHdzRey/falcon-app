@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -25,6 +26,7 @@ type Props = {
   isOnline: boolean;
   onVolver: () => void;
   onEditarNoticia: (id: string, input: NewsFormInput) => Promise<NewsItem>;
+  onRetirarNoticia: (id: string) => Promise<void>;
 };
 
 export default function DetalleNoticiaScreen({
@@ -33,20 +35,25 @@ export default function DetalleNoticiaScreen({
   isOnline,
   onVolver,
   onEditarNoticia,
+  onRetirarNoticia,
 }: Props) {
   const [modalVisible, setModalVisible] = useState(false);
   const [titulo, setTitulo] = useState(noticia.title);
   const [contenido, setContenido] = useState(noticia.body);
   const [errorFormulario, setErrorFormulario] = useState<string | null>(null);
+  const [errorAccion, setErrorAccion] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
+  const [retirando, setRetirando] = useState(false);
 
   const edicionBloqueada = Boolean(noticia.pending) || !isOnline;
+  const accionesDeshabilitadas = edicionBloqueada || guardando || retirando;
 
   const abrirModalEditar = () => {
-    if (edicionBloqueada) return;
+    if (accionesDeshabilitadas) return;
     setTitulo(noticia.title);
     setContenido(noticia.body);
     setErrorFormulario(null);
+    setErrorAccion(null);
     setModalVisible(true);
   };
 
@@ -79,6 +86,40 @@ export default function DetalleNoticiaScreen({
     }
   };
 
+  const ejecutarRetiro = async () => {
+    setErrorAccion(null);
+    setRetirando(true);
+    try {
+      await onRetirarNoticia(noticia.id);
+    } catch (error) {
+      setErrorAccion(
+        error instanceof Error
+          ? error.message
+          : 'No se pudo retirar la noticia.',
+      );
+    } finally {
+      setRetirando(false);
+    }
+  };
+
+  const confirmarRetiro = () => {
+    if (accionesDeshabilitadas) return;
+    Alert.alert(
+      'Retirar noticia',
+      '¿Retirar esta noticia? Dejará de mostrarse para todos los colaboradores.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Retirar',
+          style: 'destructive',
+          onPress: () => {
+            void ejecutarRetiro();
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <View style={[styles.pantalla, styles.contenido]}>
       <Pressable
@@ -92,18 +133,36 @@ export default function DetalleNoticiaScreen({
       <View style={styles.barraEncabezado}>
         <Text style={styles.encabezado}>Detalle de noticia</Text>
         {canEdit && (
-          <Pressable
-            style={[
-              styles.botonEditar,
-              edicionBloqueada && styles.botonEditarDeshabilitado,
-            ]}
-            onPress={abrirModalEditar}
-            disabled={edicionBloqueada}
-            accessibilityRole="button"
-            accessibilityLabel="Editar noticia"
-          >
-            <Text style={styles.textoBotonEditar}>Editar</Text>
-          </Pressable>
+          <View style={styles.accionesEncabezado}>
+            <Pressable
+              style={[
+                styles.botonEditar,
+                accionesDeshabilitadas && styles.botonEditarDeshabilitado,
+              ]}
+              onPress={abrirModalEditar}
+              disabled={accionesDeshabilitadas}
+              accessibilityRole="button"
+              accessibilityLabel="Editar noticia"
+            >
+              <Text style={styles.textoBotonEditar}>Editar</Text>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.botonRetirar,
+                accionesDeshabilitadas && styles.botonEditarDeshabilitado,
+              ]}
+              onPress={confirmarRetiro}
+              disabled={accionesDeshabilitadas}
+              accessibilityRole="button"
+              accessibilityLabel="Retirar noticia"
+            >
+              {retirando ? (
+                <ActivityIndicator size="small" color={COLORS.primaryDark} />
+              ) : (
+                <Text style={styles.textoBotonRetirar}>Retirar noticia</Text>
+              )}
+            </Pressable>
+          </View>
         )}
       </View>
 
@@ -111,9 +170,15 @@ export default function DetalleNoticiaScreen({
         <View style={styles.avisoBloqueo}>
           <Text style={styles.textoAvisoBloqueo}>
             {noticia.pending
-              ? 'Esta noticia todavía está pendiente de sincronizar. Para editarla se requiere conexión y que esté sincronizada con el servidor.'
-              : 'Para editar esta noticia se requiere conexión activa con el servidor.'}
+              ? 'Esta noticia todavía está pendiente de sincronizar. Para editarla o retirarla se requiere conexión y que esté sincronizada con el servidor.'
+              : 'Para editar o retirar esta noticia se requiere conexión activa con el servidor.'}
           </Text>
+        </View>
+      )}
+
+      {errorAccion && (
+        <View style={styles.avisoError}>
+          <Text style={styles.textoAvisoError}>{errorAccion}</Text>
         </View>
       )}
 
@@ -246,8 +311,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
     gap: 10,
     marginBottom: 14,
+  },
+  accionesEncabezado: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   encabezado: {
     fontSize: 21,
@@ -260,11 +331,27 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     borderRadius: 8,
   },
+  botonRetirar: {
+    borderWidth: 1,
+    borderColor: COLORS.primaryDark,
+    backgroundColor: COLORS.background,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    minWidth: 112,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   botonEditarDeshabilitado: {
     opacity: 0.45,
   },
   textoBotonEditar: {
     color: COLORS.background,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  textoBotonRetirar: {
+    color: COLORS.primaryDark,
     fontSize: 13,
     fontWeight: '700',
   },
@@ -277,6 +364,18 @@ const styles = StyleSheet.create({
   textoAvisoBloqueo: {
     color: '#6A4A00',
     fontSize: 12,
+    lineHeight: 18,
+  },
+  avisoError: {
+    backgroundColor: '#FDECEC',
+    borderRadius: 9,
+    padding: 12,
+    marginBottom: 14,
+  },
+  textoAvisoError: {
+    color: COLORS.error,
+    fontSize: 12,
+    fontWeight: '600',
     lineHeight: 18,
   },
   tarjeta: {

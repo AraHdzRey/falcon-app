@@ -42,6 +42,7 @@ export interface SyncSnapshot {
   profile: FalconUser;
   directory: DirectoryEntry[];
   news: NewsItem[];
+  removedNewsIds?: string[];
 }
 
 export interface LocalDashboard {
