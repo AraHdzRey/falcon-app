@@ -16,6 +16,7 @@ import type {
   SyncSnapshot,
 } from '../src/types/sync';
 import type {
+  AuditView,
   CollaboratorInput,
   CollaboratorUpdate,
   CollaboratorView,
@@ -39,6 +40,8 @@ class FakeRepository implements AuthRepository, HealthRepository, SyncRepository
   sessionUser: SessionUser | null = collaborator;
   revokedUserId: number | null = null;
   appliedOperations: SyncOperation[] = [];
+  serverVersion = 4;
+  newsProvider: () => NewsView[] = () => [];
 
   async verifyCredentials(): Promise<LoginResult | null> {
     return this.loginResult;
@@ -57,9 +60,9 @@ class FakeRepository implements AuthRepository, HealthRepository, SyncRepository
   }
 
   async getChanges(user: SessionUser, sinceVersion: number): Promise<SyncSnapshot> {
-    void sinceVersion;
+    const items = this.newsProvider();
     return {
-      serverVersion: 4,
+      serverVersion: this.serverVersion,
       profile: {
         id: user.userId,
         collaboratorId: user.collaboratorId,
@@ -68,7 +71,18 @@ class FakeRepository implements AuthRepository, HealthRepository, SyncRepository
         role: user.role,
       },
       directory: [],
-      news: [],
+      news: items
+        .filter((item) => item.active && item.version > sinceVersion)
+        .map((item) => ({
+          id: item.id,
+          title: item.title,
+          body: item.body,
+          version: item.version,
+          updatedAt: item.updatedAt,
+        })),
+      removedNewsIds: items
+        .filter((item) => !item.active && item.version > sinceVersion)
+        .map((item) => item.id),
     };
   }
 
@@ -115,6 +129,17 @@ const complaintView: ComplaintView = {
 class FakeModulesRepository implements ModulesRepository {
   complaintActor: SessionUser | null | undefined;
   deactivationStatus: 'ok' | 'self_action' | 'last_admin' = 'ok';
+  auditEvents: AuditView[] = [
+    {
+      id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      event: 'NEWS_PUBLISHED',
+      actorEmployeeNumber: 'FALCON001',
+      entity: 'news',
+      entityId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      details: { version: 5 },
+      createdAt: '2026-11-16T12:00:00.000Z',
+    },
+  ];
   newsItems: NewsView[] = [
     {
       id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
@@ -220,6 +245,28 @@ class FakeModulesRepository implements ModulesRepository {
     this.newsItems[index] = updated;
     return updated;
   }
+  async deactivateNews(id: string, actor: SessionUser) {
+    const index = this.newsItems.findIndex((item) => item.id === id && item.active);
+    if (index < 0) return null;
+    const current = this.newsItems[index]!;
+    const maxVersion = Math.max(...this.newsItems.map((item) => item.version), 0);
+    const updated: NewsView = {
+      ...current,
+      active: false,
+      version: maxVersion + 1,
+    };
+    this.newsItems[index] = updated;
+    this.auditEvents.unshift({
+      id: `eeeeeeee-eeee-4eee-8eee-${String(this.auditEvents.length + 1).padStart(12, '0')}`,
+      event: 'NEWS_DEACTIVATED',
+      actorEmployeeNumber: actor.employeeNumber,
+      entity: 'news',
+      entityId: id,
+      details: { version: updated.version },
+      createdAt: '2026-11-25T14:00:00.000Z',
+    });
+    return updated;
+  }
   async listComplaintCategories() {
     return [{ code: 'PROCESOS', name: 'Procesos' }];
   }
@@ -264,16 +311,8 @@ class FakeModulesRepository implements ModulesRepository {
   }
   async listAudit() {
     return {
-      items: [{
-        id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
-        event: 'NEWS_PUBLISHED',
-        actorEmployeeNumber: 'FALCON001',
-        entity: 'news',
-        entityId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-        details: { version: 5 },
-        createdAt: '2026-11-16T12:00:00.000Z',
-      }],
-      total: 1,
+      items: [...this.auditEvents],
+      total: this.auditEvents.length,
     };
   }
 }
@@ -281,6 +320,7 @@ class FakeModulesRepository implements ModulesRepository {
 const setup = () => {
   const repository = new FakeRepository();
   const modulesRepository = new FakeModulesRepository();
+  repository.newsProvider = () => modulesRepository.newsItems;
   const tokens = createTokenService('t'.repeat(64));
   const app = createApp({
     authRepository: repository,
@@ -673,6 +713,95 @@ test('POST /news y PATCH /news/:id validan body, caracteres de control y UUID', 
     status: 'error',
     message: 'Noticia no encontrada',
   });
+});
+
+test('PATCH /news/:id/deactivate exige autenticación, rol editorial y valida UUID/existencia', async () => {
+  const { app, repository, tokens } = setup();
+  const existingId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  const missingId = '99999999-9999-4999-8999-999999999999';
+  const token = tokens.sign({ userId: 10, tokenVersion: 0 });
+  const authorization = { Authorization: `Bearer ${token}` };
+
+  assert.equal((await request(app).patch(`/news/${existingId}/deactivate`)).status, 401);
+
+  assert.equal(
+    (await request(app).patch(`/news/${existingId}/deactivate`).set(authorization)).status,
+    403,
+  );
+
+  repository.sessionUser = { ...collaborator, role: 'editor_noticias' };
+  const invalidId = await request(app)
+    .patch('/news/no-es-uuid/deactivate')
+    .set(authorization);
+  assert.equal(invalidId.status, 400);
+  assert.deepEqual(invalidId.body, { status: 'error', message: 'ID inválido' });
+
+  const missing = await request(app)
+    .patch(`/news/${missingId}/deactivate`)
+    .set(authorization);
+  assert.equal(missing.status, 404);
+  assert.deepEqual(missing.body, {
+    status: 'error',
+    message: 'Noticia no encontrada',
+  });
+});
+
+test('PATCH /news/:id/deactivate realiza baja lógica, audita y expone removedNewsIds en /sync/changes', async () => {
+  const { app, repository, tokens } = setup();
+  const targetId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  const activeId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccd';
+  const token = tokens.sign({ userId: 10, tokenVersion: 0 });
+  const authorization = { Authorization: `Bearer ${token}` };
+
+  repository.sessionUser = { ...collaborator, role: 'administrador' };
+  const deactivated = await request(app)
+    .patch(`/news/${targetId}/deactivate`)
+    .set(authorization);
+  assert.equal(deactivated.status, 200);
+  assert.equal(deactivated.body.status, 'ok');
+  assert.equal(deactivated.body.news.id, targetId);
+  assert.equal(deactivated.body.news.active, false);
+  assert.equal(deactivated.body.news.version, 6);
+
+  const repeated = await request(app)
+    .patch(`/news/${targetId}/deactivate`)
+    .set(authorization);
+  assert.equal(repeated.status, 404);
+  assert.deepEqual(repeated.body, {
+    status: 'error',
+    message: 'Noticia no encontrada',
+  });
+
+  const listAll = await request(app).get('/news').set(authorization);
+  assert.equal(listAll.status, 200);
+  assert.equal(listAll.body.total, 1);
+  assert.equal(listAll.body.items[0].id, activeId);
+
+  const searchDeactivated = await request(app)
+    .get('/news?search=Mantenimiento')
+    .set(authorization);
+  assert.equal(searchDeactivated.status, 200);
+  assert.equal(searchDeactivated.body.total, 0);
+  assert.deepEqual(searchDeactivated.body.items, []);
+
+  const detail = await request(app).get(`/news/${targetId}`).set(authorization);
+  assert.equal(detail.status, 404);
+
+  const audit = await request(app).get('/admin/audit').set(authorization);
+  assert.equal(audit.status, 200);
+  assert.equal(audit.body.items[0].event, 'NEWS_DEACTIVATED');
+  assert.equal(audit.body.items[0].entity, 'news');
+  assert.equal(audit.body.items[0].entityId, targetId);
+
+  const sync = await request(app)
+    .get('/sync/changes?sinceVersion=5')
+    .set(authorization);
+  assert.equal(sync.status, 200);
+  assert.deepEqual(sync.body.removedNewsIds, [targetId]);
+  assert.equal(
+    sync.body.news.some((item: { id: string }) => item.id === targetId),
+    false,
+  );
 });
 
 test('queja anónima no enlaza identidad aun con token válido', async () => {

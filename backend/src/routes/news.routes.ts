@@ -151,5 +151,23 @@ export const createNewsRouter = (
     }
   });
 
+  router.patch('/news/:id/deactivate', authenticate, canEdit, async (req, res, next) => {
+    const id = readRouteParam(req.params.id);
+    if (!id || !UUID_PATTERN.test(id)) {
+      res.status(400).json({ status: 'error', message: 'ID inválido' });
+      return;
+    }
+    try {
+      const news = await repository.deactivateNews(id, res.locals.authUser!);
+      if (!news) {
+        res.status(404).json({ status: 'error', message: 'Noticia no encontrada' });
+        return;
+      }
+      res.status(200).json({ status: 'ok', news });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   return router;
 };

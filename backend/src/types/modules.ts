@@ -134,6 +134,10 @@ export interface ModulesRepository {
     input: { title: string; body: string },
     actor: SessionUser,
   ): Promise<NewsView | null>;
+  deactivateNews(
+    id: string,
+    actor: SessionUser,
+  ): Promise<NewsView | null>;
   listComplaintCategories(): Promise<ComplaintCategoryView[]>;
   createComplaint(
     input: {
