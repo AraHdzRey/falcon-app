@@ -101,6 +101,13 @@ export const runSeed = async (): Promise<void> => {
       );
       categoryIds.set(code, result.rows[0]!.id);
     }
+    await client.query(
+      `INSERT INTO categorias_queja (codigo, nombre, activo)
+       VALUES ('SUGERENCIA', 'Sugerencia', FALSE)
+       ON CONFLICT (codigo) DO UPDATE
+       SET activo = FALSE,
+           actualizado_en = NOW()`,
+    );
 
     const statusIds = new Map<string, number>();
     for (const [code, name, order] of seedComplaintStatuses) {
@@ -151,35 +158,43 @@ export const runSeed = async (): Promise<void> => {
     );
 
     for (const complaint of seedComplaints) {
-      const submitterId = complaint.employeeNumber
-        ? userIds.get(complaint.employeeNumber)
-        : null;
+      const submitterId = userIds.get(complaint.employeeNumber);
+      if (!submitterId) {
+        throw new Error(`No existe el remitente dummy ${complaint.employeeNumber}`);
+      }
       await client.query(
         `INSERT INTO quejas
-           (id, folio, categoria_id, estado_id, remitente_usuario_id,
-            anonima, asunto, descripcion, creado_en, actualizado_en,
-            resuelto_en)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9, $10)
+           (id, folio, tipo, categoria_id, gravedad_reportada, gravedad,
+            estado_id, remitente_usuario_id, anonima, asunto, descripcion,
+            nota_seguimiento, creado_en, actualizado_en, resuelto_en)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE, $9, $10, $11, $12, $12, $13)
          ON CONFLICT (id) DO UPDATE
          SET folio = EXCLUDED.folio,
+             tipo = EXCLUDED.tipo,
              categoria_id = EXCLUDED.categoria_id,
+             gravedad_reportada = EXCLUDED.gravedad_reportada,
+             gravedad = EXCLUDED.gravedad,
              estado_id = EXCLUDED.estado_id,
              remitente_usuario_id = EXCLUDED.remitente_usuario_id,
-             anonima = EXCLUDED.anonima,
+             anonima = FALSE,
              asunto = EXCLUDED.asunto,
              descripcion = EXCLUDED.descripcion,
+             nota_seguimiento = EXCLUDED.nota_seguimiento,
              creado_en = EXCLUDED.creado_en,
              actualizado_en = EXCLUDED.actualizado_en,
              resuelto_en = EXCLUDED.resuelto_en`,
         [
           complaint.id,
           complaint.folio,
+          complaint.type,
           categoryIds.get(complaint.category),
+          complaint.reportedSeverity,
+          complaint.severity,
           statusIds.get(complaint.status),
           submitterId,
-          complaint.anonymous,
           complaint.subject,
           complaint.description,
+          complaint.followUpNote,
           complaint.createdAt,
           complaint.resolvedAt,
         ],

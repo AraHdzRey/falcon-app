@@ -59,30 +59,100 @@ export interface ComplaintCategoryView {
   name: string;
 }
 
+export type ComplaintType = 'QUEJA' | 'SUGERENCIA' | 'INCIDENCIA';
+
+export type ComplaintSeverity = 'BAJA' | 'MEDIA' | 'ALTA' | 'CRITICA';
+
+export type ComplaintStatusCode =
+  | 'RECEIVED'
+  | 'UNDER_REVIEW'
+  | 'RESOLVED'
+  | 'CLOSED';
+
+export interface ComplaintSubmitterView {
+  userId: number;
+  employeeNumber: string;
+  name: string;
+  email: string | null;
+  area: string | null;
+  position: string | null;
+}
+
 export interface ComplaintView {
   id: string;
   folio: string;
+  type: ComplaintType;
   category: ComplaintCategoryView;
+  reportedSeverity: ComplaintSeverity;
+  severity: ComplaintSeverity;
   status: ComplaintCategoryView;
   anonymous: boolean;
   subject: string;
   description: string;
+  followUpNote: string | null;
   createdAt: string;
   updatedAt: string;
   resolvedAt: string | null;
-  submitter?: {
-    employeeNumber: string;
-    name: string;
-    email: string | null;
-  } | null;
+  submitter: ComplaintSubmitterView;
+}
+
+export interface CreateComplaintInput {
+  type: ComplaintType;
+  categoryCode: string;
+  severity: ComplaintSeverity;
+  subject: string;
+  description: string;
+}
+
+export interface CreatedComplaintSummary {
+  id: string;
+  folio: string;
+  type: ComplaintType;
+  reportedSeverity: ComplaintSeverity;
+  severity: ComplaintSeverity;
+  status: ComplaintStatusCode;
+  createdAt: string;
 }
 
 export interface ComplaintTrackingView {
   folio: string;
+  type: ComplaintType;
+  reportedSeverity: ComplaintSeverity;
+  severity: ComplaintSeverity;
   status: string;
   statusName: string;
+  followUpNote: string | null;
   updatedAt: string;
   resolvedAt: string | null;
+  remitenteUsuarioId: number;
+}
+
+export interface ComplaintFilters {
+  status?: ComplaintStatusCode;
+  severity?: ComplaintSeverity;
+  type?: ComplaintType;
+  category?: string;
+  from?: string;
+  to?: string;
+}
+
+export interface ComplaintsSummary {
+  bySeverity: Record<ComplaintSeverity, number>;
+  byStatus: Record<ComplaintStatusCode, number>;
+}
+
+export interface ComplaintStatusUpdate {
+  statusCode?: ComplaintStatusCode;
+  severity?: ComplaintSeverity;
+  followUpNote?: string | null;
+}
+
+export interface ComplaintReportExportDetails {
+  scope: 'single' | 'summary';
+  complaintId?: string | null;
+  folio?: string;
+  filters?: ComplaintFilters;
+  totalItems: number;
 }
 
 export interface AuditView {
@@ -136,25 +206,38 @@ export interface ModulesRepository {
   ): Promise<NewsView | null>;
   listComplaintCategories(): Promise<ComplaintCategoryView[]>;
   createComplaint(
-    input: {
-      categoryCode: string;
-      anonymous: boolean;
-      subject: string;
-      description: string;
-    },
-    actor: SessionUser | null,
-  ): Promise<MutationResult<{ id: string; folio: string }>>;
-  trackComplaint(folio: string): Promise<ComplaintTrackingView | null>;
-  listComplaints(page: number, pageSize: number): Promise<{
+    input: CreateComplaintInput,
+    actor: SessionUser,
+  ): Promise<MutationResult<CreatedComplaintSummary>>;
+  listMyComplaints(
+    userId: number,
+    page: number,
+    pageSize: number,
+  ): Promise<{
     items: ComplaintView[];
     total: number;
+  }>;
+  getComplaintByFolio(folio: string): Promise<ComplaintTrackingView | null>;
+  trackComplaint(folio: string): Promise<ComplaintTrackingView | null>;
+  listComplaints(
+    page: number,
+    pageSize: number,
+    filters?: ComplaintFilters,
+  ): Promise<{
+    items: ComplaintView[];
+    total: number;
+    summary: ComplaintsSummary;
   }>;
   getComplaint(id: string): Promise<ComplaintView | null>;
   updateComplaintStatus(
     id: string,
-    statusCode: string,
+    input: ComplaintStatusUpdate,
     actor: SessionUser,
   ): Promise<MutationResult<ComplaintView>>;
+  recordComplaintReportExport(
+    actor: SessionUser,
+    details: ComplaintReportExportDetails,
+  ): Promise<void>;
   listAudit(page: number, pageSize: number): Promise<{
     items: AuditView[];
     total: number;

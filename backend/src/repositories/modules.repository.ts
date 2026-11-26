@@ -7,8 +7,16 @@ import type {
   CollaboratorUpdate,
   CollaboratorView,
   ComplaintCategoryView,
+  ComplaintFilters,
+  ComplaintReportExportDetails,
+  ComplaintSeverity,
+  ComplaintsSummary,
+  ComplaintStatusCode,
+  ComplaintStatusUpdate,
   ComplaintTrackingView,
+  ComplaintType,
   ComplaintView,
+  CreateComplaintInput,
   DirectoryFilters,
   ModulesRepository,
   NewsFilters,
@@ -32,19 +40,26 @@ interface CollaboratorRow {
 interface ComplaintRow {
   id: string;
   folio: string;
+  type: ComplaintType;
   categoryCode: string;
   categoryName: string;
+  reportedSeverity: ComplaintSeverity;
+  severity: ComplaintSeverity;
   statusCode: string;
   statusName: string;
   anonymous: boolean;
   subject: string;
   description: string;
+  followUpNote: string | null;
   createdAt: string;
   updatedAt: string;
   resolvedAt: string | null;
-  submitterEmployeeNumber: string | null;
-  submitterName: string | null;
+  submitterUserId: number;
+  submitterEmployeeNumber: string;
+  submitterName: string;
   submitterEmail: string | null;
+  submitterArea: string | null;
+  submitterPosition: string | null;
 }
 
 const collaboratorSelect = `
@@ -74,44 +89,56 @@ const complaintSelect = `
   SELECT
     q.id::text AS id,
     q.folio,
+    q.tipo AS type,
     cq.codigo AS "categoryCode",
     cq.nombre AS "categoryName",
+    q.gravedad_reportada AS "reportedSeverity",
+    q.gravedad AS severity,
     eq.codigo AS "statusCode",
     eq.nombre AS "statusName",
     q.anonima AS anonymous,
     q.asunto AS subject,
     q.descripcion AS description,
+    q.nota_seguimiento AS "followUpNote",
     q.creado_en::text AS "createdAt",
     q.actualizado_en::text AS "updatedAt",
     q.resuelto_en::text AS "resolvedAt",
+    u.id::int AS "submitterUserId",
     c.numero_empleado AS "submitterEmployeeNumber",
     c.nombre AS "submitterName",
-    c.correo AS "submitterEmail"
+    c.correo AS "submitterEmail",
+    c.area AS "submitterArea",
+    c.puesto AS "submitterPosition"
   FROM quejas q
   JOIN categorias_queja cq ON cq.id = q.categoria_id
   JOIN estados_queja eq ON eq.id = q.estado_id
-  LEFT JOIN usuarios u ON u.id = q.remitente_usuario_id
-  LEFT JOIN colaboradores c ON c.id = u.colaborador_id
+  JOIN usuarios u ON u.id = q.remitente_usuario_id
+  JOIN colaboradores c ON c.id = u.colaborador_id
 `;
 
 const toComplaint = (row: ComplaintRow): ComplaintView => ({
   id: row.id,
   folio: row.folio,
+  type: row.type,
   category: { code: row.categoryCode, name: row.categoryName },
+  reportedSeverity: row.reportedSeverity,
+  severity: row.severity,
   status: { code: row.statusCode, name: row.statusName },
-  anonymous: row.anonymous,
+  anonymous: false,
   subject: row.subject,
   description: row.description,
+  followUpNote: row.followUpNote,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
   resolvedAt: row.resolvedAt,
-  submitter: row.anonymous
-    ? null
-    : {
-        employeeNumber: row.submitterEmployeeNumber!,
-        name: row.submitterName!,
-        email: row.submitterEmail,
-      },
+  submitter: {
+    userId: row.submitterUserId,
+    employeeNumber: row.submitterEmployeeNumber,
+    name: row.submitterName,
+    email: row.submitterEmail,
+    area: row.submitterArea,
+    position: row.submitterPosition,
+  },
 });
 
 const appendAudit = async (
@@ -534,8 +561,7 @@ export const createModulesRepository = (pool: Pool): ModulesRepository => ({
     return result.rows;
   },
 
-  async createComplaint(input, actor) {
-    if (!input.anonymous && !actor) return { status: 'conflict' };
+  async createComplaint(input: CreateComplaintInput, actor: SessionUser) {
     try {
       return await withTransaction(pool, async (client) => {
         const category = await client.query<{ id: number }>(
@@ -550,34 +576,48 @@ export const createModulesRepository = (pool: Pool): ModulesRepository => ({
         }
         const id = randomUUID();
         const folio = generateFolio();
-        await client.query(
+        const inserted = await client.query<{ createdAt: string }>(
           `INSERT INTO quejas
-             (id, folio, categoria_id, estado_id, remitente_usuario_id,
-              anonima, asunto, descripcion)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+             (id, folio, tipo, categoria_id, gravedad_reportada, gravedad,
+              estado_id, remitente_usuario_id, anonima, asunto, descripcion)
+           VALUES ($1, $2, $3, $4, $5, $5, $6, $7, FALSE, $8, $9)
+           RETURNING creado_en::text AS "createdAt"`,
           [
             id,
             folio,
+            input.type,
             category.rows[0].id,
+            input.severity,
             status.rows[0].id,
-            input.anonymous ? null : actor!.userId,
-            input.anonymous,
+            actor.userId,
             input.subject,
             input.description,
           ],
         );
         await appendAudit(client, {
           event: 'COMPLAINT_CREATED',
-          actorUserId: input.anonymous ? null : actor!.userId,
+          actorUserId: actor.userId,
           entity: 'complaint',
           entityId: id,
           details: {
-            anonymous: input.anonymous,
+            type: input.type,
             category: input.categoryCode,
+            severity: input.severity,
             status: 'RECEIVED',
           },
         });
-        return { status: 'ok', value: { id, folio } } as const;
+        return {
+          status: 'ok',
+          value: {
+            id,
+            folio,
+            type: input.type,
+            reportedSeverity: input.severity,
+            severity: input.severity,
+            status: 'RECEIVED' as const,
+            createdAt: inserted.rows[0]!.createdAt,
+          },
+        } as const;
       });
     } catch (error) {
       if (isUniqueViolation(error)) return { status: 'conflict' };
@@ -585,27 +625,19 @@ export const createModulesRepository = (pool: Pool): ModulesRepository => ({
     }
   },
 
-  async trackComplaint(folio) {
-    const result = await pool.query<ComplaintTrackingView>(
-      `SELECT q.folio, e.codigo AS status, e.nombre AS "statusName",
-              q.actualizado_en::text AS "updatedAt",
-              q.resuelto_en::text AS "resolvedAt"
-       FROM quejas q JOIN estados_queja e ON e.id = q.estado_id
-       WHERE q.folio = $1`,
-      [folio],
-    );
-    return result.rows[0] ?? null;
-  },
-
-  async listComplaints(page, pageSize) {
+  async listMyComplaints(userId, page, pageSize) {
     const [items, count] = await Promise.all([
       pool.query<ComplaintRow>(
         `${complaintSelect}
+         WHERE q.remitente_usuario_id = $1
          ORDER BY q.creado_en DESC, q.id
-         LIMIT $1 OFFSET $2`,
-        [pageSize, (page - 1) * pageSize],
+         LIMIT $2 OFFSET $3`,
+        [userId, pageSize, (page - 1) * pageSize],
       ),
-      pool.query<{ total: string }>('SELECT COUNT(*)::text AS total FROM quejas'),
+      pool.query<{ total: string }>(
+        'SELECT COUNT(*)::text AS total FROM quejas WHERE remitente_usuario_id = $1',
+        [userId],
+      ),
     ]);
     return {
       items: items.rows.map(toComplaint),
@@ -613,37 +645,181 @@ export const createModulesRepository = (pool: Pool): ModulesRepository => ({
     };
   },
 
+  async getComplaintByFolio(folio) {
+    const result = await pool.query<ComplaintTrackingView>(
+      `SELECT q.folio,
+              q.tipo AS type,
+              q.gravedad_reportada AS "reportedSeverity",
+              q.gravedad AS severity,
+              e.codigo AS status,
+              e.nombre AS "statusName",
+              q.nota_seguimiento AS "followUpNote",
+              q.actualizado_en::text AS "updatedAt",
+              q.resuelto_en::text AS "resolvedAt",
+              q.remitente_usuario_id::int AS "remitenteUsuarioId"
+       FROM quejas q
+       JOIN estados_queja e ON e.id = q.estado_id
+       WHERE q.folio = $1`,
+      [folio],
+    );
+    return result.rows[0] ?? null;
+  },
+
+  async trackComplaint(folio) {
+    return this.getComplaintByFolio(folio);
+  },
+
+  async listComplaints(page, pageSize, filters: ComplaintFilters = {}) {
+    const filterParams = [
+      filters.status ?? null,
+      filters.severity ?? null,
+      filters.type ?? null,
+      filters.category ?? null,
+      filters.from ?? null,
+      filters.to ?? null,
+    ];
+    const whereClause = `
+      WHERE ($1::text IS NULL OR eq.codigo = $1)
+        AND ($2::text IS NULL OR q.gravedad = $2)
+        AND ($3::text IS NULL OR q.tipo = $3)
+        AND ($4::text IS NULL OR cq.codigo = $4)
+        AND ($5::timestamptz IS NULL OR q.creado_en >= $5::timestamptz)
+        AND ($6::timestamptz IS NULL OR q.creado_en <= $6::timestamptz)
+    `;
+    const baseFrom = `
+      FROM quejas q
+      JOIN categorias_queja cq ON cq.id = q.categoria_id
+      JOIN estados_queja eq ON eq.id = q.estado_id
+    `;
+
+    const [items, count, severityRows, statusRows] = await Promise.all([
+      pool.query<ComplaintRow>(
+        `${complaintSelect}
+         ${whereClause}
+         ORDER BY q.creado_en DESC, q.id
+         LIMIT $7 OFFSET $8`,
+        [...filterParams, pageSize, (page - 1) * pageSize],
+      ),
+      pool.query<{ total: string }>(
+        `SELECT COUNT(*)::text AS total ${baseFrom} ${whereClause}`,
+        filterParams,
+      ),
+      pool.query<{ severity: ComplaintSeverity; total: string }>(
+        `SELECT q.gravedad AS severity, COUNT(*)::text AS total
+         ${baseFrom}
+         ${whereClause}
+         GROUP BY q.gravedad`,
+        filterParams,
+      ),
+      pool.query<{ status: ComplaintStatusCode; total: string }>(
+        `SELECT eq.codigo AS status, COUNT(*)::text AS total
+         ${baseFrom}
+         ${whereClause}
+         GROUP BY eq.codigo`,
+        filterParams,
+      ),
+    ]);
+
+    const summary: ComplaintsSummary = {
+      bySeverity: { BAJA: 0, MEDIA: 0, ALTA: 0, CRITICA: 0 },
+      byStatus: { RECEIVED: 0, UNDER_REVIEW: 0, RESOLVED: 0, CLOSED: 0 },
+    };
+
+    for (const row of severityRows.rows) {
+      if (row.severity in summary.bySeverity) {
+        summary.bySeverity[row.severity] = Number(row.total);
+      }
+    }
+    for (const row of statusRows.rows) {
+      if (row.status in summary.byStatus) {
+        summary.byStatus[row.status] = Number(row.total);
+      }
+    }
+
+    return {
+      items: items.rows.map(toComplaint),
+      total: Number(count.rows[0]?.total ?? 0),
+      summary,
+    };
+  },
+
   async getComplaint(id) {
     return withClient(pool, (client) => findComplaint(client, id));
   },
 
-  async updateComplaintStatus(id, statusCode, actor) {
+  async updateComplaintStatus(id, input: ComplaintStatusUpdate, actor) {
     return withTransaction(pool, async (client) => {
       const current = await findComplaint(client, id);
       if (!current) return { status: 'not_found' } as const;
+
+      const nextStatusCode =
+        input.statusCode ?? (current.status.code as ComplaintStatusCode);
       const status = await client.query<{ id: number }>(
         'SELECT id::int FROM estados_queja WHERE codigo = $1',
-        [statusCode],
+        [nextStatusCode],
       );
       if (!status.rows[0]) return { status: 'conflict' } as const;
+
+      const nextSeverity = input.severity ?? current.severity;
+      const nextFollowUpNote =
+        input.followUpNote !== undefined
+          ? input.followUpNote
+          : current.followUpNote;
+
       await client.query(
         `UPDATE quejas
-         SET estado_id = $2, actualizado_en = NOW(),
-             resuelto_en = CASE WHEN $3 = 'RESOLVED' THEN NOW() ELSE NULL END
+         SET estado_id = $2,
+             gravedad = $3,
+             nota_seguimiento = $4,
+             actualizado_en = NOW(),
+             resuelto_en = CASE
+               WHEN $5 IN ('RESOLVED', 'CLOSED') THEN COALESCE(resuelto_en, NOW())
+               ELSE NULL
+             END
          WHERE id = $1`,
-        [id, status.rows[0].id, statusCode],
+        [id, status.rows[0].id, nextSeverity, nextFollowUpNote, nextStatusCode],
       );
       await appendAudit(client, {
         event: 'COMPLAINT_STATUS_CHANGED',
         actorUserId: actor.userId,
         entity: 'complaint',
         entityId: id,
-        details: { fromStatus: current.status.code, toStatus: statusCode },
+        details: {
+          fromStatus: current.status.code,
+          toStatus: nextStatusCode,
+          fromSeverity: current.severity,
+          toSeverity: nextSeverity,
+        },
       });
       return {
         status: 'ok',
         value: (await findComplaint(client, id))!,
       } as const;
+    });
+  },
+
+  async recordComplaintReportExport(
+    actor: SessionUser,
+    details: ComplaintReportExportDetails,
+  ): Promise<void> {
+    await withClient(pool, async (client) => {
+      const auditDetails: Record<string, unknown> = {
+        scope: details.scope,
+        totalItems: details.totalItems,
+      };
+      if (details.folio !== undefined) {
+        auditDetails.folio = details.folio;
+      }
+      if (details.filters !== undefined) {
+        auditDetails.filters = details.filters;
+      }
+      await appendAudit(client, {
+        event: 'COMPLAINT_REPORT_EXPORTED',
+        actorUserId: actor.userId,
+        entity: 'complaint',
+        entityId: details.complaintId ?? null,
+        details: auditDetails,
+      });
     });
   },
 

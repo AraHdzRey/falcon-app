@@ -19,7 +19,11 @@ import type {
   CollaboratorInput,
   CollaboratorUpdate,
   CollaboratorView,
+  ComplaintFilters,
+  ComplaintReportExportDetails,
+  ComplaintStatusUpdate,
   ComplaintView,
+  CreateComplaintInput,
   ModulesRepository,
   NewsFilters,
   NewsView,
@@ -101,19 +105,63 @@ const collaboratorView: CollaboratorView = {
 const complaintView: ComplaintView = {
   id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
   folio: 'FLC-ABCD-1234',
+  type: 'QUEJA',
   category: { code: 'PROCESOS', name: 'Procesos' },
+  reportedSeverity: 'ALTA',
+  severity: 'ALTA',
   status: { code: 'RECEIVED', name: 'Recibida' },
-  anonymous: true,
+  anonymous: false,
   subject: 'Caso sintético',
   description: 'Descripción sintética',
+  followUpNote: null,
   createdAt: '2026-11-16T12:00:00.000Z',
   updatedAt: '2026-11-16T12:00:00.000Z',
   resolvedAt: null,
-  submitter: null,
+  submitter: {
+    userId: 10,
+    employeeNumber: 'FALCON001',
+    name: 'Usuario de prueba',
+    email: 'falcon001@example.test',
+    area: 'TI',
+    position: 'Analista',
+  },
+};
+
+const otherUserComplaintView: ComplaintView = {
+  id: 'dddddddd-dddd-4ddd-8ddd-ddddddddddde',
+  folio: 'FLC-WXYZ-5678',
+  type: 'SUGERENCIA',
+  category: { code: 'AMBIENTE_LABORAL', name: 'Ambiente laboral' },
+  reportedSeverity: 'BAJA',
+  severity: 'BAJA',
+  status: { code: 'UNDER_REVIEW', name: 'En revisión' },
+  anonymous: false,
+  subject: 'Sugerencia de otro colaborador',
+  description: 'Contenido de otro colaborador.',
+  followUpNote: 'Revisando propuesta.',
+  createdAt: '2026-11-17T12:00:00.000Z',
+  updatedAt: '2026-11-17T12:00:00.000Z',
+  resolvedAt: null,
+  submitter: {
+    userId: 99,
+    employeeNumber: 'FALCON099',
+    name: 'Otro colaborador',
+    email: 'falcon099@example.test',
+    area: 'Operaciones',
+    position: 'Coordinador',
+  },
 };
 
 class FakeModulesRepository implements ModulesRepository {
   complaintActor: SessionUser | null | undefined;
+  lastCreatedComplaintInput: CreateComplaintInput | null = null;
+  lastComplaintFilters: ComplaintFilters | undefined;
+  lastStatusUpdate: ComplaintStatusUpdate | null = null;
+  exportedReports: Array<{
+    actor: SessionUser;
+    details: ComplaintReportExportDetails;
+  }> = [];
+  complaints: ComplaintView[] = [complaintView, otherUserComplaintView];
   deactivationStatus: 'ok' | 'self_action' | 'last_admin' = 'ok';
   newsItems: NewsView[] = [
     {
@@ -221,46 +269,125 @@ class FakeModulesRepository implements ModulesRepository {
     return updated;
   }
   async listComplaintCategories() {
-    return [{ code: 'PROCESOS', name: 'Procesos' }];
+    return [
+      { code: 'AMBIENTE_LABORAL', name: 'Ambiente laboral' },
+      { code: 'PROCESOS', name: 'Procesos' },
+      { code: 'INFRAESTRUCTURA', name: 'Infraestructura' },
+      { code: 'SEGURIDAD', name: 'Seguridad' },
+      { code: 'OTRO', name: 'Otro' },
+    ];
   }
-  async createComplaint(
-    _input: {
-      categoryCode: string;
-      anonymous: boolean;
-      subject: string;
-      description: string;
-    },
-    actor: SessionUser | null,
-  ) {
+  async createComplaint(input: CreateComplaintInput, actor: SessionUser) {
     this.complaintActor = actor;
-    return {
-      status: 'ok' as const,
-      value: { id: complaintView.id, folio: complaintView.folio },
-    };
-  }
-  async trackComplaint() {
-    return {
-      folio: complaintView.folio,
-      status: complaintView.status.code,
-      statusName: complaintView.status.name,
-      updatedAt: complaintView.updatedAt,
-      resolvedAt: null,
-    };
-  }
-  async listComplaints() {
-    return { items: [complaintView], total: 1 };
-  }
-  async getComplaint() {
-    return complaintView;
-  }
-  async updateComplaintStatus() {
+    this.lastCreatedComplaintInput = input;
     return {
       status: 'ok' as const,
       value: {
-        ...complaintView,
-        status: { code: 'UNDER_REVIEW', name: 'En revisión' },
+        id: complaintView.id,
+        folio: complaintView.folio,
+        type: input.type,
+        reportedSeverity: input.severity,
+        severity: input.severity,
+        status: 'RECEIVED' as const,
+        createdAt: complaintView.createdAt,
       },
     };
+  }
+  async listMyComplaints(userId: number) {
+    const items = this.complaints.filter(
+      (item) => item.submitter.userId === userId,
+    );
+    return { items, total: items.length };
+  }
+  async getComplaintByFolio(folio: string) {
+    const found = this.complaints.find((item) => item.folio === folio);
+    if (!found) return null;
+    return {
+      folio: found.folio,
+      type: found.type,
+      reportedSeverity: found.reportedSeverity,
+      severity: found.severity,
+      status: found.status.code,
+      statusName: found.status.name,
+      followUpNote: found.followUpNote,
+      updatedAt: found.updatedAt,
+      resolvedAt: found.resolvedAt,
+      remitenteUsuarioId: found.submitter.userId,
+    };
+  }
+  async trackComplaint(folio: string) {
+    return this.getComplaintByFolio(folio);
+  }
+  async listComplaints(
+    _page: number,
+    _pageSize: number,
+    filters: ComplaintFilters = {},
+  ) {
+    this.lastComplaintFilters = filters;
+    const filtered = this.complaints.filter((item) => {
+      if (filters.status && item.status.code !== filters.status) return false;
+      if (filters.severity && item.severity !== filters.severity) return false;
+      if (filters.type && item.type !== filters.type) return false;
+      if (filters.category && item.category.code !== filters.category) {
+        return false;
+      }
+      return true;
+    });
+    const summary = {
+      bySeverity: { BAJA: 0, MEDIA: 0, ALTA: 0, CRITICA: 0 },
+      byStatus: { RECEIVED: 0, UNDER_REVIEW: 0, RESOLVED: 0, CLOSED: 0 },
+    };
+    for (const item of filtered) {
+      summary.bySeverity[item.severity] += 1;
+      summary.byStatus[
+        item.status.code as keyof typeof summary.byStatus
+      ] += 1;
+    }
+    return { items: filtered, total: filtered.length, summary };
+  }
+  async getComplaint(id: string) {
+    return this.complaints.find((item) => item.id === id) ?? null;
+  }
+  async updateComplaintStatus(
+    id: string,
+    input: ComplaintStatusUpdate,
+  ) {
+    this.lastStatusUpdate = input;
+    const current = this.complaints.find((item) => item.id === id);
+    if (!current) return { status: 'not_found' as const };
+    const nextStatusCode = input.statusCode ?? current.status.code;
+    const updated: ComplaintView = {
+      ...current,
+      status: {
+        code: nextStatusCode,
+        name:
+          nextStatusCode === 'UNDER_REVIEW'
+            ? 'En revisión'
+            : nextStatusCode === 'RESOLVED'
+              ? 'Resuelta'
+              : nextStatusCode === 'CLOSED'
+                ? 'Cerrada'
+                : 'Recibida',
+      },
+      severity: input.severity ?? current.severity,
+      followUpNote:
+        input.followUpNote !== undefined
+          ? input.followUpNote
+          : current.followUpNote,
+      resolvedAt: ['RESOLVED', 'CLOSED'].includes(nextStatusCode)
+        ? current.resolvedAt ?? '2026-11-18T12:00:00.000Z'
+        : null,
+    };
+    return {
+      status: 'ok' as const,
+      value: updated,
+    };
+  }
+  async recordComplaintReportExport(
+    actor: SessionUser,
+    details: ComplaintReportExportDetails,
+  ) {
+    this.exportedReports.push({ actor, details });
   }
   async listAudit() {
     return {
@@ -675,55 +802,546 @@ test('POST /news y PATCH /news/:id validan body, caracteres de control y UUID', 
   });
 });
 
-test('queja anónima no enlaza identidad aun con token válido', async () => {
-  const { app, modulesRepository, tokens } = setup();
-  const token = tokens.sign({ userId: 10, tokenVersion: 0 });
-  const response = await request(app).post('/complaints')
-    .set('Authorization', `Bearer ${token}`)
-    .send({
-      categoryCode: 'PROCESOS',
-      anonymous: true,
-      subject: 'Caso anónimo sintético',
-      description: 'Descripción sintética sin datos personales.',
-    });
-  assert.equal(response.status, 201);
-  assert.equal(modulesRepository.complaintActor, null);
-  assert.deepEqual(Object.keys(response.body.complaint), ['folio']);
-});
-
-test('queja identificada exige y utiliza sesión válida', async () => {
-  const { app, modulesRepository, tokens } = setup();
-  const body = {
-    categoryCode: 'PROCESOS', anonymous: false,
-    subject: 'Caso identificado sintético', description: 'Descripción sintética.',
-  };
-  assert.equal((await request(app).post('/complaints').send(body)).status, 401);
-  const token = tokens.sign({ userId: 10, tokenVersion: 0 });
-  assert.equal((await request(app).post('/complaints')
-    .set('Authorization', `Bearer ${token}`).send(body)).status, 201);
-  assert.equal(modulesRepository.complaintActor?.userId, 10);
-});
-
-test('seguimiento por folio devuelve únicamente estado público', async () => {
+test('Falcón te escucha exige sesión autenticada en categorías, creación, mis casos y seguimiento', async () => {
   const { app } = setup();
-  const response = await request(app).get('/complaints/track/FLC-ABCD-1234');
-  assert.equal(response.status, 200);
-  assert.deepEqual(Object.keys(response.body.complaint).sort(), [
-    'folio', 'resolvedAt', 'status', 'statusName', 'updatedAt',
-  ]);
-  assert.doesNotMatch(JSON.stringify(response.body), /submitter|description|audit/i);
+  assert.equal((await request(app).get('/complaint-categories')).status, 401);
+  assert.equal(
+    (
+      await request(app).post('/complaints').send({
+        type: 'QUEJA',
+        categoryCode: 'PROCESOS',
+        severity: 'MEDIA',
+        subject: 'Caso sin sesión',
+        description: 'No debe permitirse sin token.',
+      })
+    ).status,
+    401,
+  );
+  assert.equal((await request(app).get('/complaints/mine')).status, 401);
+  assert.equal(
+    (await request(app).get('/complaints/track/FLC-ABCD-1234')).status,
+    401,
+  );
 });
 
-test('administración de quejas valida rol y permite cambio de estado', async () => {
+test('POST /complaints rechaza envíos anónimos, tipos o gravedades inválidas y registra caso identificado', async () => {
+  const { app, modulesRepository, tokens } = setup();
+  const token = tokens.sign({ userId: 10, tokenVersion: 0 });
+  const authorization = { Authorization: `Bearer ${token}` };
+
+  const categoriesResponse = await request(app)
+    .get('/complaint-categories')
+    .set(authorization);
+  assert.equal(categoriesResponse.status, 200);
+  assert.equal(
+    categoriesResponse.body.items.some(
+      (item: { code: string }) => item.code === 'SUGERENCIA',
+    ),
+    false,
+  );
+
+  const anonymousAttempt = await request(app)
+    .post('/complaints')
+    .set(authorization)
+    .send({
+      type: 'QUEJA',
+      categoryCode: 'PROCESOS',
+      severity: 'ALTA',
+      anonymous: true,
+      subject: 'Intento anónimo',
+      description: 'Debe rechazarse con 400.',
+    });
+  assert.equal(anonymousAttempt.status, 400);
+
+  const invalidType = await request(app)
+    .post('/complaints')
+    .set(authorization)
+    .send({
+      type: 'OTRO_TIPO',
+      categoryCode: 'PROCESOS',
+      severity: 'ALTA',
+      subject: 'Tipo inválido',
+      description: 'Debe rechazarse con 400.',
+    });
+  assert.equal(invalidType.status, 400);
+
+  const invalidSeverity = await request(app)
+    .post('/complaints')
+    .set(authorization)
+    .send({
+      type: 'INCIDENCIA',
+      categoryCode: 'PROCESOS',
+      severity: 'URGENTE',
+      subject: 'Gravedad inválida',
+      description: 'Debe rechazarse con 400.',
+    });
+  assert.equal(invalidSeverity.status, 400);
+
+  const created = await request(app)
+    .post('/complaints')
+    .set(authorization)
+    .send({
+      type: 'INCIDENCIA',
+      categoryCode: 'PROCESOS',
+      severity: 'ALTA',
+      subject: 'Incidencia identificada sintética',
+      description: 'Descripción sintética con usuario autenticado.',
+    });
+  assert.equal(created.status, 201);
+  assert.equal(modulesRepository.complaintActor?.userId, 10);
+  assert.deepEqual(modulesRepository.lastCreatedComplaintInput, {
+    type: 'INCIDENCIA',
+    categoryCode: 'PROCESOS',
+    severity: 'ALTA',
+    subject: 'Incidencia identificada sintética',
+    description: 'Descripción sintética con usuario autenticado.',
+  });
+  assert.deepEqual(created.body.complaint, {
+    id: complaintView.id,
+    folio: complaintView.folio,
+    type: 'INCIDENCIA',
+    reportedSeverity: 'ALTA',
+    severity: 'ALTA',
+    status: 'RECEIVED',
+    createdAt: complaintView.createdAt,
+  });
+});
+
+test('GET /complaints/mine y GET /complaints/track/:folio garantizan aislamiento de confidencialidad', async () => {
   const { app, repository, tokens } = setup();
   const token = tokens.sign({ userId: 10, tokenVersion: 0 });
-  assert.equal((await request(app).get('/admin/complaints')
-    .set('Authorization', `Bearer ${token}`)).status, 403);
-  repository.sessionUser = { ...collaborator, role: 'responsable_quejas' };
-  assert.equal((await request(app)
+  const authorization = { Authorization: `Bearer ${token}` };
+
+  const mine = await request(app).get('/complaints/mine').set(authorization);
+  assert.equal(mine.status, 200);
+  assert.equal(mine.body.total, 1);
+  assert.equal(mine.body.items.length, 1);
+  assert.equal(mine.body.items[0].folio, 'FLC-ABCD-1234');
+  assert.deepEqual(mine.body.items[0].submitter, {
+    userId: 10,
+    employeeNumber: 'FALCON001',
+    name: 'Usuario de prueba',
+    email: 'falcon001@example.test',
+    area: 'TI',
+    position: 'Analista',
+  });
+
+  const ownTrack = await request(app)
+    .get('/complaints/track/FLC-ABCD-1234')
+    .set(authorization);
+  assert.equal(ownTrack.status, 200);
+  assert.deepEqual(Object.keys(ownTrack.body.complaint).sort(), [
+    'folio',
+    'followUpNote',
+    'reportedSeverity',
+    'resolvedAt',
+    'severity',
+    'status',
+    'statusName',
+    'type',
+    'updatedAt',
+  ]);
+  assert.equal('remitenteUsuarioId' in ownTrack.body.complaint, false);
+
+  const foreignTrack = await request(app)
+    .get('/complaints/track/FLC-WXYZ-5678')
+    .set(authorization);
+  assert.equal(foreignTrack.status, 404);
+
+  repository.sessionUser = { ...collaborator, role: 'administrador' };
+  const adminTrack = await request(app)
+    .get('/complaints/track/FLC-WXYZ-5678')
+    .set(authorization);
+  assert.equal(adminTrack.status, 200);
+  assert.equal(adminTrack.body.complaint.folio, 'FLC-WXYZ-5678');
+});
+
+test('administración de quejas es exclusiva de administrador, soporta filtros/summary y reclasificación', async () => {
+  const { app, repository, modulesRepository, tokens } = setup();
+  const token = tokens.sign({ userId: 10, tokenVersion: 0 });
+  const authorization = { Authorization: `Bearer ${token}` };
+
+  for (const forbiddenRole of [
+    'colaborador',
+    'responsable_quejas',
+    'director',
+    'capital_humano',
+    'editor_noticias',
+    'auditor',
+  ] as const) {
+    repository.sessionUser = { ...collaborator, role: forbiddenRole };
+    assert.equal(
+      (await request(app).get('/admin/complaints').set(authorization)).status,
+      403,
+      `GET /admin/complaints debe rechazar rol ${forbiddenRole}`,
+    );
+    assert.equal(
+      (
+        await request(app)
+          .get(`/admin/complaints/${complaintView.id}`)
+          .set(authorization)
+      ).status,
+      403,
+      `GET /admin/complaints/:id debe rechazar rol ${forbiddenRole}`,
+    );
+    assert.equal(
+      (
+        await request(app)
+          .patch(`/admin/complaints/${complaintView.id}/status`)
+          .set(authorization)
+          .send({ statusCode: 'UNDER_REVIEW' })
+      ).status,
+      403,
+      `PATCH /admin/complaints/:id/status debe rechazar rol ${forbiddenRole}`,
+    );
+  }
+
+  repository.sessionUser = { ...collaborator, role: 'administrador' };
+
+  const filtered = await request(app)
+    .get(
+      '/admin/complaints?severity=ALTA&type=QUEJA&status=RECEIVED&category=procesos&from=2026-11-01&to=2026-11-30',
+    )
+    .set(authorization);
+  assert.equal(filtered.status, 200);
+  assert.equal(filtered.body.total, 1);
+  assert.deepEqual(modulesRepository.lastComplaintFilters, {
+    severity: 'ALTA',
+    type: 'QUEJA',
+    status: 'RECEIVED',
+    category: 'PROCESOS',
+    from: '2026-11-01',
+    to: '2026-11-30',
+  });
+  assert.deepEqual(filtered.body.summary, {
+    bySeverity: { BAJA: 0, MEDIA: 0, ALTA: 1, CRITICA: 0 },
+    byStatus: { RECEIVED: 1, UNDER_REVIEW: 0, RESOLVED: 0, CLOSED: 0 },
+  });
+
+  assert.equal(
+    (
+      await request(app)
+        .get('/admin/complaints?severity=INVALIDA')
+        .set(authorization)
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await request(app)
+        .get('/admin/complaints?from=2026-12-01&to=2026-11-01')
+        .set(authorization)
+    ).status,
+    400,
+  );
+
+  const detail = await request(app)
+    .get(`/admin/complaints/${complaintView.id}`)
+    .set(authorization);
+  assert.equal(detail.status, 200);
+  assert.equal(detail.body.complaint.submitter.employeeNumber, 'FALCON001');
+
+  assert.equal(
+    (
+      await request(app)
+        .patch(`/admin/complaints/${complaintView.id}/status`)
+        .set(authorization)
+        .send({})
+    ).status,
+    400,
+  );
+
+  const updated = await request(app)
     .patch(`/admin/complaints/${complaintView.id}/status`)
-    .set('Authorization', `Bearer ${token}`)
-    .send({ statusCode: 'UNDER_REVIEW' })).status, 200);
+    .set(authorization)
+    .send({
+      statusCode: 'RESOLVED',
+      severity: 'CRITICA',
+      followUpNote: 'Atendido de forma prioritaria por Administración.',
+    });
+  assert.equal(updated.status, 200);
+  assert.equal(updated.body.complaint.status.code, 'RESOLVED');
+  assert.equal(updated.body.complaint.severity, 'CRITICA');
+  assert.equal(updated.body.complaint.reportedSeverity, 'ALTA');
+  assert.equal(
+    updated.body.complaint.followUpNote,
+    'Atendido de forma prioritaria por Administración.',
+  );
+  assert.ok(updated.body.complaint.resolvedAt);
+});
+
+test('exportación de reportes PDF en Falcón te escucha es exclusiva de administrador, genera buffers %PDF- y audita', async () => {
+  const { app, repository, modulesRepository, tokens } = setup();
+  const token = tokens.sign({ userId: 10, tokenVersion: 0 });
+  const authorization = { Authorization: `Bearer ${token}` };
+
+  assert.equal(
+    (await request(app).get('/admin/complaints/report.pdf')).status,
+    401,
+  );
+  assert.equal(
+    (
+      await request(app).get(
+        `/admin/complaints/${complaintView.id}/report.pdf`,
+      )
+    ).status,
+    401,
+  );
+
+  for (const forbiddenRole of [
+    'colaborador',
+    'responsable_quejas',
+    'director',
+    'auditor',
+  ] as const) {
+    repository.sessionUser = { ...collaborator, role: forbiddenRole };
+    assert.equal(
+      (
+        await request(app)
+          .get('/admin/complaints/report.pdf')
+          .set(authorization)
+      ).status,
+      403,
+      `GET /admin/complaints/report.pdf debe rechazar rol ${forbiddenRole}`,
+    );
+    assert.equal(
+      (
+        await request(app)
+          .get(`/admin/complaints/${complaintView.id}/report.pdf`)
+          .set(authorization)
+      ).status,
+      403,
+      `GET /admin/complaints/:id/report.pdf debe rechazar rol ${forbiddenRole}`,
+    );
+  }
+
+  repository.sessionUser = { ...collaborator, role: 'administrador' };
+
+  const summaryPdf = await request(app)
+    .get('/admin/complaints/report.pdf?severity=ALTA')
+    .set(authorization)
+    .buffer(true)
+    .parse((res, callback) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (chunk: Buffer) => chunks.push(chunk));
+      res.on('end', () => callback(null, Buffer.concat(chunks)));
+    });
+  assert.equal(summaryPdf.status, 200);
+  assert.match(String(summaryPdf.headers['content-type']), /^application\/pdf/);
+  assert.equal(summaryPdf.headers['cache-control'], 'no-store');
+  assert.equal(summaryPdf.headers['referrer-policy'], 'no-referrer');
+  assert.match(
+    String(summaryPdf.headers['content-disposition']),
+    /^attachment; filename="falcon-te-escucha-reporte-\d{8}\.pdf"$/,
+  );
+  assert.ok(Buffer.isBuffer(summaryPdf.body));
+  assert.equal(summaryPdf.body.subarray(0, 5).toString('ascii'), '%PDF-');
+  assert.equal(modulesRepository.exportedReports.length, 1);
+  assert.deepEqual(modulesRepository.exportedReports[0]?.details, {
+    scope: 'summary',
+    filters: { severity: 'ALTA' },
+    totalItems: 1,
+  });
+
+  const detailPdf = await request(app)
+    .get(`/admin/complaints/${complaintView.id}/report.pdf`)
+    .set(authorization)
+    .buffer(true)
+    .parse((res, callback) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (chunk: Buffer) => chunks.push(chunk));
+      res.on('end', () => callback(null, Buffer.concat(chunks)));
+    });
+  assert.equal(detailPdf.status, 200);
+  assert.match(String(detailPdf.headers['content-type']), /^application\/pdf/);
+  assert.equal(detailPdf.headers['cache-control'], 'no-store');
+  assert.equal(detailPdf.headers['referrer-policy'], 'no-referrer');
+  assert.equal(
+    detailPdf.headers['content-disposition'],
+    `attachment; filename="falcon-te-escucha-${complaintView.folio}.pdf"`,
+  );
+  assert.ok(Buffer.isBuffer(detailPdf.body));
+  assert.equal(detailPdf.body.subarray(0, 5).toString('ascii'), '%PDF-');
+  assert.equal(modulesRepository.exportedReports.length, 2);
+  assert.deepEqual(modulesRepository.exportedReports[1]?.details, {
+    scope: 'single',
+    complaintId: complaintView.id,
+    folio: complaintView.folio,
+    totalItems: 1,
+  });
+
+  assert.equal(
+    (
+      await request(app)
+        .get('/admin/complaints/no-es-uuid/report.pdf')
+        .set(authorization)
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await request(app)
+        .get('/admin/complaints/99999999-9999-4999-8999-999999999999/report.pdf')
+        .set(authorization)
+    ).status,
+    404,
+  );
+});
+
+test('POST /admin/complaints/report-ticket emite tickets de un solo uso y permite descarga PDF sin Bearer en la URL', async () => {
+  const { app, repository, modulesRepository, tokens } = setup();
+  const token = tokens.sign({ userId: 10, tokenVersion: 0 });
+  const authorization = { Authorization: `Bearer ${token}` };
+
+  assert.equal(
+    (
+      await request(app)
+        .post('/admin/complaints/report-ticket')
+        .send({ scope: 'summary' })
+    ).status,
+    401,
+  );
+
+  for (const forbiddenRole of [
+    'colaborador',
+    'responsable_quejas',
+    'director',
+    'auditor',
+  ] as const) {
+    repository.sessionUser = { ...collaborator, role: forbiddenRole };
+    assert.equal(
+      (
+        await request(app)
+          .post('/admin/complaints/report-ticket')
+          .set(authorization)
+          .send({ scope: 'summary' })
+      ).status,
+      403,
+      `POST /admin/complaints/report-ticket debe rechazar rol ${forbiddenRole}`,
+    );
+  }
+
+  repository.sessionUser = { ...collaborator, role: 'administrador' };
+
+  for (const invalidPayload of [
+    { scope: 'otro' },
+    { scope: 'single', complaintId: 'no-es-uuid' },
+    { scope: 'summary', filters: { severity: 'INVALIDA' } },
+    { scope: 'summary', filters: { from: '2026-12-01', to: '2026-11-01' } },
+    { scope: 'summary', filters: ['no-objeto'] },
+  ]) {
+    const invalidResponse = await request(app)
+      .post('/admin/complaints/report-ticket')
+      .set(authorization)
+      .send(invalidPayload);
+    assert.equal(invalidResponse.status, 400);
+  }
+
+  const summaryTicketRes = await request(app)
+    .post('/admin/complaints/report-ticket')
+    .set(authorization)
+    .send({
+      scope: 'summary',
+      filters: { severity: 'ALTA', type: 'QUEJA' },
+    });
+  assert.equal(summaryTicketRes.status, 201);
+  assert.equal(summaryTicketRes.body.status, 'ok');
+  assert.equal(summaryTicketRes.body.expiresInSeconds, 60);
+  const summaryTicket = String(summaryTicketRes.body.ticket);
+  assert.ok(summaryTicket.length >= 32);
+  assert.equal(
+    summaryTicketRes.body.downloadPath,
+    `/admin/complaints/report.pdf?ticket=${encodeURIComponent(summaryTicket)}`,
+  );
+
+  const summaryDownload = await request(app)
+    .get(
+      `/admin/complaints/report.pdf?ticket=${encodeURIComponent(summaryTicket)}&severity=BAJA`,
+    )
+    .buffer(true)
+    .parse((res, callback) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (chunk: Buffer) => chunks.push(chunk));
+      res.on('end', () => callback(null, Buffer.concat(chunks)));
+    });
+  assert.equal(summaryDownload.status, 200);
+  assert.match(
+    String(summaryDownload.headers['content-type']),
+    /^application\/pdf/,
+  );
+  assert.equal(summaryDownload.headers['cache-control'], 'no-store');
+  assert.equal(summaryDownload.headers['referrer-policy'], 'no-referrer');
+  assert.equal(summaryDownload.body.subarray(0, 5).toString('ascii'), '%PDF-');
+  assert.equal(modulesRepository.exportedReports.length, 1);
+  assert.deepEqual(modulesRepository.exportedReports[0]?.details, {
+    scope: 'summary',
+    filters: { severity: 'ALTA', type: 'QUEJA' },
+    totalItems: 1,
+  });
+
+  const reusedSummaryTicket = await request(app).get(
+    `/admin/complaints/report.pdf?ticket=${encodeURIComponent(summaryTicket)}`,
+  );
+  assert.equal(reusedSummaryTicket.status, 401);
+
+  const singleTicketRes = await request(app)
+    .post('/admin/complaints/report-ticket')
+    .set(authorization)
+    .send({
+      scope: 'single',
+      complaintId: complaintView.id,
+    });
+  assert.equal(singleTicketRes.status, 201);
+  assert.equal(singleTicketRes.body.expiresInSeconds, 60);
+  const singleTicket = String(singleTicketRes.body.ticket);
+  assert.equal(
+    singleTicketRes.body.downloadPath,
+    `/admin/complaints/${complaintView.id}/report.pdf?ticket=${encodeURIComponent(singleTicket)}`,
+  );
+
+  const wrongComplaintAttempt = await request(app).get(
+    `/admin/complaints/${otherUserComplaintView.id}/report.pdf?ticket=${encodeURIComponent(singleTicket)}`,
+  );
+  assert.equal(wrongComplaintAttempt.status, 401);
+
+  const wrongScopeAttempt = await request(app).get(
+    `/admin/complaints/report.pdf?ticket=${encodeURIComponent(singleTicket)}`,
+  );
+  assert.equal(wrongScopeAttempt.status, 401);
+
+  const singleDownload = await request(app)
+    .get(singleTicketRes.body.downloadPath)
+    .buffer(true)
+    .parse((res, callback) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (chunk: Buffer) => chunks.push(chunk));
+      res.on('end', () => callback(null, Buffer.concat(chunks)));
+    });
+  assert.equal(singleDownload.status, 200);
+  assert.match(
+    String(singleDownload.headers['content-type']),
+    /^application\/pdf/,
+  );
+  assert.equal(singleDownload.headers['cache-control'], 'no-store');
+  assert.equal(singleDownload.headers['referrer-policy'], 'no-referrer');
+  assert.equal(singleDownload.body.subarray(0, 5).toString('ascii'), '%PDF-');
+  assert.equal(modulesRepository.exportedReports.length, 2);
+  assert.deepEqual(modulesRepository.exportedReports[1]?.details, {
+    scope: 'single',
+    complaintId: complaintView.id,
+    folio: complaintView.folio,
+    totalItems: 1,
+  });
+
+  const reusedSingleTicket = await request(app).get(
+    singleTicketRes.body.downloadPath,
+  );
+  assert.equal(reusedSingleTicket.status, 401);
+
+  const nonexistentTicket = await request(app).get(
+    '/admin/complaints/report.pdf?ticket=ticket-inexistente',
+  );
+  assert.equal(nonexistentTicket.status, 401);
 });
 
 test('auditor puede consultar bitácora paginada y colaborador no', async () => {

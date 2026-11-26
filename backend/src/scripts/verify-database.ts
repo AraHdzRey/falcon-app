@@ -21,10 +21,11 @@ const expectedSeedCounts: Record<string, { expected: number; query: string }> = 
       WHERE c.numero_empleado ~ '^TI(00[1-9]|01[0-9]|020)$'`,
   },
   categorias_queja: {
-    expected: 6,
+    expected: 5,
     query: `SELECT COUNT(*)::text AS count FROM categorias_queja
-      WHERE codigo IN ('AMBIENTE_LABORAL', 'PROCESOS', 'INFRAESTRUCTURA',
-                       'SEGURIDAD', 'SUGERENCIA', 'OTRO')`,
+      WHERE activo = TRUE
+        AND codigo IN ('AMBIENTE_LABORAL', 'PROCESOS', 'INFRAESTRUCTURA',
+                       'SEGURIDAD', 'OTRO')`,
   },
   estados_queja: {
     expected: 4,
@@ -101,8 +102,8 @@ const verify = async (): Promise<void> => {
           AS sensitive_audit_details
     `);
     const result = privacy.rows[0];
-    if (!result || Number(result.anonymous_complaints) !== 5) {
-      throw new Error('El seed debe contener exactamente 5 quejas anónimas');
+    if (!result || Number(result.anonymous_complaints) !== 0) {
+      throw new Error('El seed no debe contener quejas anónimas');
     }
     for (const key of [
       'anonymous_linked',
@@ -125,7 +126,7 @@ const verify = async (): Promise<void> => {
     }
 
     console.log(JSON.stringify({ database: config.databaseUrl.database, seedCounts,
-      anonymousComplaints: 5, privacyChecks: 'OK' }));
+      anonymousComplaints: 0, privacyChecks: 'OK' }));
   } finally {
     await pool.end();
   }
