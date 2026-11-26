@@ -29,6 +29,7 @@ import NoticiasScreen from './src/screens/noticias.screen';
 import InicioScreen from './src/screens/inicio.screen';
 import MiPerfilScreen from './src/screens/mi-perfil.screen';
 import DetalleNoticiaScreen from './src/screens/detalle-noticia.screen';
+import FalconTeEscuchaScreen from './src/screens/falcon-te-escucha.screen';
 import type { NewsItem , LocalDashboard } from './src/sync/types';
 import {
   cacheProfile,
@@ -69,7 +70,7 @@ export default function App() {
   const syncInProgress = useRef(new Set<number>());
   const sessionRef = useRef<StoredSession | null>(null);
   const logoutInProgress = useRef(false);
-  const [panel, setPanel] = useState<'inicio' | 'directorio' | 'perfil' | 'noticias' | 'noticia' | 'mi-perfil' | 'mas'>('inicio');
+  const [panel, setPanel] = useState<'inicio' | 'directorio' | 'perfil' | 'noticias' | 'noticia' | 'escucha' | 'mi-perfil' | 'mas'>('inicio');
   const [directoryPeople, setDirectoryPeople] = useState<Colaborador[]>([]);
   const [directoryOrigin, setDirectoryOrigin] = useState<'api' | 'cache'>('cache');
   const [selectedPerson, setSelectedPerson] = useState<Colaborador | null>(null);
@@ -420,6 +421,12 @@ export default function App() {
                 onEditarNoticia={handleEditNews}
                 onRetirarNoticia={handleDeactivateNews}
               />
+            ) : panel === 'escucha' ? (
+              <FalconTeEscuchaScreen
+                token={session.token}
+                user={session.user}
+                isOnline={hasConnection}
+              />
             ) : panel === 'mi-perfil' ? (
               <MiPerfilScreen
                 name={session.user.name}
@@ -436,12 +443,7 @@ export default function App() {
             onDirectory={() => void openDirectory(session)}
             onNews={() => setPanel('noticias')}
             onProfile={() => setPanel('mi-perfil')}
-            onComplaints={() =>
-              Alert.alert(
-                'Quejas',
-                'El módulo todavía no está disponible en esta versión del frontend.',
-              )
-            }
+            onComplaints={() => setPanel('escucha')}
           />
         ) : session ? (
           <>
