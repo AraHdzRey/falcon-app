@@ -8,6 +8,7 @@ import type {
   CollaboratorView,
   ComplaintCategoryView,
   ComplaintFilters,
+  ComplaintReportExportDetails,
   ComplaintSeverity,
   ComplaintsSummary,
   ComplaintStatusCode,
@@ -794,6 +795,31 @@ export const createModulesRepository = (pool: Pool): ModulesRepository => ({
         status: 'ok',
         value: (await findComplaint(client, id))!,
       } as const;
+    });
+  },
+
+  async recordComplaintReportExport(
+    actor: SessionUser,
+    details: ComplaintReportExportDetails,
+  ): Promise<void> {
+    await withClient(pool, async (client) => {
+      const auditDetails: Record<string, unknown> = {
+        scope: details.scope,
+        totalItems: details.totalItems,
+      };
+      if (details.folio !== undefined) {
+        auditDetails.folio = details.folio;
+      }
+      if (details.filters !== undefined) {
+        auditDetails.filters = details.filters;
+      }
+      await appendAudit(client, {
+        event: 'COMPLAINT_REPORT_EXPORTED',
+        actorUserId: actor.userId,
+        entity: 'complaint',
+        entityId: details.complaintId ?? null,
+        details: auditDetails,
+      });
     });
   },
 

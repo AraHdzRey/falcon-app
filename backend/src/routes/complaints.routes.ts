@@ -1,5 +1,9 @@
 import { Router } from 'express';
 import { requireAuth, requireRole } from '../middlewares/auth.middleware';
+import {
+  buildComplaintDetailPdf,
+  buildComplaintsSummaryPdf,
+} from '../services/complaints-pdf.service';
 import type { TokenService } from '../services/token.service';
 import type { AuthRepository } from '../types/auth';
 import type {
@@ -71,6 +75,58 @@ const readIsoDate = (value: unknown): string | null => {
   const normalized = value.trim();
   if (!ISO_DATE_PATTERN.test(normalized)) return null;
   return Number.isNaN(Date.parse(normalized)) ? null : normalized;
+};
+
+const parseComplaintFilters = (
+  query: Record<string, unknown>,
+): ComplaintFilters | null => {
+  const filters: ComplaintFilters = {};
+
+  if (query.status !== undefined) {
+    const status = readComplaintStatus(query.status);
+    if (!status) return null;
+    filters.status = status;
+  }
+
+  if (query.severity !== undefined) {
+    const severity = readComplaintSeverity(query.severity);
+    if (!severity) return null;
+    filters.severity = severity;
+  }
+
+  if (query.type !== undefined) {
+    const type = readComplaintType(query.type);
+    if (!type) return null;
+    filters.type = type;
+  }
+
+  if (query.category !== undefined) {
+    const category = readString(query.category, 1, 40);
+    if (!category) return null;
+    filters.category = category.toUpperCase();
+  }
+
+  if (query.from !== undefined) {
+    const from = readIsoDate(query.from);
+    if (!from) return null;
+    filters.from = from;
+  }
+
+  if (query.to !== undefined) {
+    const to = readIsoDate(query.to);
+    if (!to) return null;
+    filters.to = to;
+  }
+
+  if (
+    filters.from &&
+    filters.to &&
+    Date.parse(filters.from) > Date.parse(filters.to)
+  ) {
+    return null;
+  }
+
+  return filters;
 };
 
 export const createComplaintsRouter = (
@@ -193,67 +249,10 @@ export const createComplaintsRouter = (
         return;
       }
 
-      const filters: ComplaintFilters = {};
-
-      if (req.query.status !== undefined) {
-        const status = readComplaintStatus(req.query.status);
-        if (!status) {
-          res.status(400).json({ status: 'error', message: 'Filtros inválidos' });
-          return;
-        }
-        filters.status = status;
-      }
-
-      if (req.query.severity !== undefined) {
-        const severity = readComplaintSeverity(req.query.severity);
-        if (!severity) {
-          res.status(400).json({ status: 'error', message: 'Filtros inválidos' });
-          return;
-        }
-        filters.severity = severity;
-      }
-
-      if (req.query.type !== undefined) {
-        const type = readComplaintType(req.query.type);
-        if (!type) {
-          res.status(400).json({ status: 'error', message: 'Filtros inválidos' });
-          return;
-        }
-        filters.type = type;
-      }
-
-      if (req.query.category !== undefined) {
-        const category = readString(req.query.category, 1, 40);
-        if (!category) {
-          res.status(400).json({ status: 'error', message: 'Filtros inválidos' });
-          return;
-        }
-        filters.category = category.toUpperCase();
-      }
-
-      if (req.query.from !== undefined) {
-        const from = readIsoDate(req.query.from);
-        if (!from) {
-          res.status(400).json({ status: 'error', message: 'Filtros inválidos' });
-          return;
-        }
-        filters.from = from;
-      }
-
-      if (req.query.to !== undefined) {
-        const to = readIsoDate(req.query.to);
-        if (!to) {
-          res.status(400).json({ status: 'error', message: 'Filtros inválidos' });
-          return;
-        }
-        filters.to = to;
-      }
-
-      if (
-        filters.from &&
-        filters.to &&
-        Date.parse(filters.from) > Date.parse(filters.to)
-      ) {
+      const filters = parseComplaintFilters(
+        req.query as Record<string, unknown>,
+      );
+      if (!filters) {
         res.status(400).json({ status: 'error', message: 'Filtros inválidos' });
         return;
       }
@@ -265,6 +264,90 @@ export const createComplaintsRouter = (
           filters,
         );
         res.status(200).json({ status: 'ok', ...result, ...pagination });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.get(
+    '/admin/complaints/report.pdf',
+    authenticate,
+    complaintsAdmin,
+    async (req, res, next) => {
+      const filters = parseComplaintFilters(
+        req.query as Record<string, unknown>,
+      );
+      if (!filters) {
+        res.status(400).json({ status: 'error', message: 'Filtros inválidos' });
+        return;
+      }
+
+      try {
+        const actor = res.locals.authUser!;
+        const result = await repository.listComplaints(1, 500, filters);
+        await repository.recordComplaintReportExport(actor, {
+          scope: 'summary',
+          filters,
+          totalItems: result.items.length,
+        });
+        const pdfBuffer = await buildComplaintsSummaryPdf(
+          result,
+          filters,
+          actor,
+        );
+        const dateStamp = new Date()
+          .toISOString()
+          .slice(0, 10)
+          .replace(/-/g, '');
+        res
+          .status(200)
+          .set({
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="falcon-te-escucha-reporte-${dateStamp}.pdf"`,
+            'Cache-Control': 'no-store',
+          })
+          .send(pdfBuffer);
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.get(
+    '/admin/complaints/:id/report.pdf',
+    authenticate,
+    complaintsAdmin,
+    async (req, res, next) => {
+      const id = readRouteParam(req.params.id);
+      if (!id || !UUID_PATTERN.test(id)) {
+        res.status(400).json({ status: 'error', message: 'ID inválido' });
+        return;
+      }
+      try {
+        const complaint = await repository.getComplaint(id);
+        if (!complaint) {
+          res
+            .status(404)
+            .json({ status: 'error', message: 'Queja no encontrada' });
+          return;
+        }
+        const actor = res.locals.authUser!;
+        await repository.recordComplaintReportExport(actor, {
+          scope: 'single',
+          complaintId: complaint.id,
+          folio: complaint.folio,
+          totalItems: 1,
+        });
+        const pdfBuffer = await buildComplaintDetailPdf(complaint, actor);
+        res
+          .status(200)
+          .set({
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="falcon-te-escucha-${complaint.folio}.pdf"`,
+            'Cache-Control': 'no-store',
+          })
+          .send(pdfBuffer);
       } catch (error) {
         next(error);
       }

@@ -147,6 +147,14 @@ export interface ComplaintStatusUpdate {
   followUpNote?: string | null;
 }
 
+export interface ComplaintReportExportDetails {
+  scope: 'single' | 'summary';
+  complaintId?: string | null;
+  folio?: string;
+  filters?: ComplaintFilters;
+  totalItems: number;
+}
+
 export interface AuditView {
   id: string;
   event: string;
@@ -226,6 +234,10 @@ export interface ModulesRepository {
     input: ComplaintStatusUpdate,
     actor: SessionUser,
   ): Promise<MutationResult<ComplaintView>>;
+  recordComplaintReportExport(
+    actor: SessionUser,
+    details: ComplaintReportExportDetails,
+  ): Promise<void>;
   listAudit(page: number, pageSize: number): Promise<{
     items: AuditView[];
     total: number;

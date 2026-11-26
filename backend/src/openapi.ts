@@ -265,6 +265,86 @@ export const openApiDocument = {
         },
       },
     },
+    '/admin/complaints/report.pdf': {
+      get: {
+        tags: ['Complaints'],
+        summary:
+          'Exporta reporte PDF consolidado de casos filtrados (exclusivo rol administrador)',
+        security: bearer,
+        parameters: [
+          {
+            in: 'query',
+            name: 'status',
+            schema: {
+              type: 'string',
+              enum: ['RECEIVED', 'UNDER_REVIEW', 'RESOLVED', 'CLOSED'],
+            },
+          },
+          {
+            in: 'query',
+            name: 'severity',
+            schema: {
+              type: 'string',
+              enum: ['BAJA', 'MEDIA', 'ALTA', 'CRITICA'],
+            },
+          },
+          {
+            in: 'query',
+            name: 'type',
+            schema: {
+              type: 'string',
+              enum: ['QUEJA', 'SUGERENCIA', 'INCIDENCIA'],
+            },
+          },
+          { in: 'query', name: 'category', schema: { type: 'string' } },
+          { in: 'query', name: 'from', schema: { type: 'string', format: 'date-time' } },
+          { in: 'query', name: 'to', schema: { type: 'string', format: 'date-time' } },
+        ],
+        responses: {
+          '200': {
+            description: 'Documento PDF consolidado de Falcón te escucha',
+            content: {
+              'application/pdf': {
+                schema: { type: 'string', format: 'binary' },
+              },
+            },
+          },
+          '400': errorResponse,
+          '401': errorResponse,
+          '403': errorResponse,
+        },
+      },
+    },
+    '/admin/complaints/{id}/report.pdf': {
+      get: {
+        tags: ['Complaints'],
+        summary:
+          'Exporta ficha PDF confidencial de un caso individual (exclusivo rol administrador)',
+        security: bearer,
+        parameters: [
+          {
+            in: 'path',
+            name: 'id',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Ficha PDF confidencial del caso',
+            content: {
+              'application/pdf': {
+                schema: { type: 'string', format: 'binary' },
+              },
+            },
+          },
+          '400': errorResponse,
+          '401': errorResponse,
+          '403': errorResponse,
+          '404': errorResponse,
+        },
+      },
+    },
     '/admin/complaints/{id}': {
       get: {
         tags: ['Complaints'],

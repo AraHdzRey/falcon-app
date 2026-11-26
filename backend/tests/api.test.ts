@@ -20,6 +20,7 @@ import type {
   CollaboratorUpdate,
   CollaboratorView,
   ComplaintFilters,
+  ComplaintReportExportDetails,
   ComplaintStatusUpdate,
   ComplaintView,
   CreateComplaintInput,
@@ -156,6 +157,10 @@ class FakeModulesRepository implements ModulesRepository {
   lastCreatedComplaintInput: CreateComplaintInput | null = null;
   lastComplaintFilters: ComplaintFilters | undefined;
   lastStatusUpdate: ComplaintStatusUpdate | null = null;
+  exportedReports: Array<{
+    actor: SessionUser;
+    details: ComplaintReportExportDetails;
+  }> = [];
   complaints: ComplaintView[] = [complaintView, otherUserComplaintView];
   deactivationStatus: 'ok' | 'self_action' | 'last_admin' = 'ok';
   newsItems: NewsView[] = [
@@ -377,6 +382,12 @@ class FakeModulesRepository implements ModulesRepository {
       status: 'ok' as const,
       value: updated,
     };
+  }
+  async recordComplaintReportExport(
+    actor: SessionUser,
+    details: ComplaintReportExportDetails,
+  ) {
+    this.exportedReports.push({ actor, details });
   }
   async listAudit() {
     return {
@@ -1057,6 +1068,122 @@ test('administración de quejas es exclusiva de administrador, soporta filtros/s
     'Atendido de forma prioritaria por Administración.',
   );
   assert.ok(updated.body.complaint.resolvedAt);
+});
+
+test('exportación de reportes PDF en Falcón te escucha es exclusiva de administrador, genera buffers %PDF- y audita', async () => {
+  const { app, repository, modulesRepository, tokens } = setup();
+  const token = tokens.sign({ userId: 10, tokenVersion: 0 });
+  const authorization = { Authorization: `Bearer ${token}` };
+
+  assert.equal(
+    (await request(app).get('/admin/complaints/report.pdf')).status,
+    401,
+  );
+  assert.equal(
+    (
+      await request(app).get(
+        `/admin/complaints/${complaintView.id}/report.pdf`,
+      )
+    ).status,
+    401,
+  );
+
+  for (const forbiddenRole of [
+    'colaborador',
+    'responsable_quejas',
+    'director',
+    'auditor',
+  ] as const) {
+    repository.sessionUser = { ...collaborator, role: forbiddenRole };
+    assert.equal(
+      (
+        await request(app)
+          .get('/admin/complaints/report.pdf')
+          .set(authorization)
+      ).status,
+      403,
+      `GET /admin/complaints/report.pdf debe rechazar rol ${forbiddenRole}`,
+    );
+    assert.equal(
+      (
+        await request(app)
+          .get(`/admin/complaints/${complaintView.id}/report.pdf`)
+          .set(authorization)
+      ).status,
+      403,
+      `GET /admin/complaints/:id/report.pdf debe rechazar rol ${forbiddenRole}`,
+    );
+  }
+
+  repository.sessionUser = { ...collaborator, role: 'administrador' };
+
+  const summaryPdf = await request(app)
+    .get('/admin/complaints/report.pdf?severity=ALTA')
+    .set(authorization)
+    .buffer(true)
+    .parse((res, callback) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (chunk: Buffer) => chunks.push(chunk));
+      res.on('end', () => callback(null, Buffer.concat(chunks)));
+    });
+  assert.equal(summaryPdf.status, 200);
+  assert.match(String(summaryPdf.headers['content-type']), /^application\/pdf/);
+  assert.equal(summaryPdf.headers['cache-control'], 'no-store');
+  assert.match(
+    String(summaryPdf.headers['content-disposition']),
+    /^attachment; filename="falcon-te-escucha-reporte-\d{8}\.pdf"$/,
+  );
+  assert.ok(Buffer.isBuffer(summaryPdf.body));
+  assert.equal(summaryPdf.body.subarray(0, 5).toString('ascii'), '%PDF-');
+  assert.equal(modulesRepository.exportedReports.length, 1);
+  assert.deepEqual(modulesRepository.exportedReports[0]?.details, {
+    scope: 'summary',
+    filters: { severity: 'ALTA' },
+    totalItems: 1,
+  });
+
+  const detailPdf = await request(app)
+    .get(`/admin/complaints/${complaintView.id}/report.pdf`)
+    .set(authorization)
+    .buffer(true)
+    .parse((res, callback) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (chunk: Buffer) => chunks.push(chunk));
+      res.on('end', () => callback(null, Buffer.concat(chunks)));
+    });
+  assert.equal(detailPdf.status, 200);
+  assert.match(String(detailPdf.headers['content-type']), /^application\/pdf/);
+  assert.equal(detailPdf.headers['cache-control'], 'no-store');
+  assert.equal(
+    detailPdf.headers['content-disposition'],
+    `attachment; filename="falcon-te-escucha-${complaintView.folio}.pdf"`,
+  );
+  assert.ok(Buffer.isBuffer(detailPdf.body));
+  assert.equal(detailPdf.body.subarray(0, 5).toString('ascii'), '%PDF-');
+  assert.equal(modulesRepository.exportedReports.length, 2);
+  assert.deepEqual(modulesRepository.exportedReports[1]?.details, {
+    scope: 'single',
+    complaintId: complaintView.id,
+    folio: complaintView.folio,
+    totalItems: 1,
+  });
+
+  assert.equal(
+    (
+      await request(app)
+        .get('/admin/complaints/no-es-uuid/report.pdf')
+        .set(authorization)
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await request(app)
+        .get('/admin/complaints/99999999-9999-4999-8999-999999999999/report.pdf')
+        .set(authorization)
+    ).status,
+    404,
+  );
 });
 
 test('auditor puede consultar bitácora paginada y colaborador no', async () => {

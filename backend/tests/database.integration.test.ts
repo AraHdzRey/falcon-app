@@ -324,6 +324,23 @@ test(
     assert.ok(adminList.body.summary.bySeverity.CRITICA >= 1);
     assert.ok(adminList.body.summary.byStatus.CLOSED >= 1);
 
+    const summaryPdf = await request(app)
+      .get('/admin/complaints/report.pdf?severity=CRITICA')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    assert.match(String(summaryPdf.headers['content-type']), /^application\/pdf/);
+    assert.equal(summaryPdf.headers['cache-control'], 'no-store');
+
+    const detailPdf = await request(app)
+      .get(`/admin/complaints/${identifiedRow.rows[0]!.id}/report.pdf`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    assert.match(String(detailPdf.headers['content-type']), /^application\/pdf/);
+    assert.equal(
+      detailPdf.headers['content-disposition'],
+      `attachment; filename="falcon-te-escucha-${identifiedFolio}.pdf"`,
+    );
+
     await request(app)
       .get('/admin/audit?page=1&pageSize=100')
       .set('Authorization', `Bearer ${adminToken}`)
