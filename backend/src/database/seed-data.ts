@@ -65,8 +65,20 @@ export const seedComplaintCategories = [
   ['PROCESOS', 'Procesos'],
   ['INFRAESTRUCTURA', 'Infraestructura'],
   ['SEGURIDAD', 'Seguridad'],
-  ['SUGERENCIA', 'Sugerencia'],
   ['OTRO', 'Otro'],
+] as const;
+
+export const seedComplaintTypes = [
+  'QUEJA',
+  'SUGERENCIA',
+  'INCIDENCIA',
+] as const;
+
+export const seedComplaintSeverities = [
+  'BAJA',
+  'MEDIA',
+  'ALTA',
+  'CRITICA',
 ] as const;
 
 export const seedComplaintStatuses = [
@@ -85,21 +97,32 @@ const folios = [
 ] as const;
 
 export const seedComplaints = folios.map((folio, index) => {
-  const anonymous = index % 4 === 0;
   const status = seedComplaintStatuses[index % seedComplaintStatuses.length]![0];
+  const type = seedComplaintTypes[index % seedComplaintTypes.length]!;
+  const reportedSeverity =
+    seedComplaintSeverities[index % seedComplaintSeverities.length]!;
+  const severity =
+    index % 5 === 0
+      ? seedComplaintSeverities[(index + 1) % seedComplaintSeverities.length]!
+      : reportedSeverity;
+  const resolved = ['RESOLVED', 'CLOSED'].includes(status);
   return {
     id: `10000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
     folio,
+    type,
     category: seedComplaintCategories[index % seedComplaintCategories.length]![0],
+    reportedSeverity,
+    severity,
     status,
-    employeeNumber: anonymous
-      ? null
-      : `TI${String((index % 20) + 1).padStart(3, '0')}`,
-    anonymous,
+    employeeNumber: `TI${String((index % 20) + 1).padStart(3, '0')}`,
+    anonymous: false as const,
     subject: `Caso sintético ${index + 1}`,
-    description: `Descripción ficticia para validar el flujo de quejas ${index + 1}.`,
+    description: `Descripción ficticia para validar el flujo de Falcón te escucha ${index + 1}.`,
+    followUpNote: resolved
+      ? `Seguimiento sintético registrado para el folio ${folio}.`
+      : null,
     createdAt: `2026-01-${String(index + 1).padStart(2, '0')}T12:00:00.000Z`,
-    resolvedAt: ['RESOLVED', 'CLOSED'].includes(status)
+    resolvedAt: resolved
       ? `2026-02-${String(index + 1).padStart(2, '0')}T12:00:00.000Z`
       : null,
   };
@@ -128,14 +151,15 @@ export const seedAuditEvents = Array.from({ length: 15 }, (_, index) => {
   return {
     id: `30000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
     event: auditEventTypes[index % auditEventTypes.length]!,
-    actorEmployeeNumber:
-      complaintEvent && complaint.anonymous
-        ? null
-        : `TI${String((index % 20) + 1).padStart(3, '0')}`,
+    actorEmployeeNumber: `TI${String((index % 20) + 1).padStart(3, '0')}`,
     entity: complaintEvent ? 'complaint' : 'synthetic_fixture',
     entityId: complaintEvent ? complaint.id : `fixture-${index + 1}`,
     details: complaintEvent
-      ? { status: complaint.status, synthetic: true }
+      ? {
+          status: complaint.status,
+          severity: complaint.severity,
+          synthetic: true,
+        }
       : { synthetic: true },
     createdAt: `2026-04-${String(index + 1).padStart(2, '0')}T12:00:00.000Z`,
   };

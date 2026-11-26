@@ -88,12 +88,44 @@ export const openApiDocument = {
       },
       ComplaintInput: {
         type: 'object',
-        required: ['categoryCode', 'anonymous', 'subject', 'description'],
+        required: ['type', 'categoryCode', 'severity', 'subject', 'description'],
         properties: {
+          type: {
+            type: 'string',
+            enum: ['QUEJA', 'SUGERENCIA', 'INCIDENCIA'],
+            example: 'QUEJA',
+          },
           categoryCode: { type: 'string', example: 'PROCESOS' },
-          anonymous: { type: 'boolean', example: true },
+          severity: {
+            type: 'string',
+            enum: ['BAJA', 'MEDIA', 'ALTA', 'CRITICA'],
+            example: 'MEDIA',
+          },
           subject: { type: 'string', example: 'Caso sintético' },
-          description: { type: 'string', example: 'Descripción ficticia sin información personal.' },
+          description: {
+            type: 'string',
+            example: 'Descripción ficticia del caso en Falcón te escucha.',
+          },
+        },
+      },
+      ComplaintStatusUpdate: {
+        type: 'object',
+        properties: {
+          statusCode: {
+            type: 'string',
+            enum: ['RECEIVED', 'UNDER_REVIEW', 'RESOLVED', 'CLOSED'],
+            example: 'UNDER_REVIEW',
+          },
+          severity: {
+            type: 'string',
+            enum: ['BAJA', 'MEDIA', 'ALTA', 'CRITICA'],
+            example: 'ALTA',
+          },
+          followUpNote: {
+            type: ['string', 'null'],
+            maxLength: 2000,
+            example: 'Caso en revisión por Administración.',
+          },
         },
       },
     },
@@ -122,12 +154,171 @@ export const openApiDocument = {
       get: { tags: ['News'], summary: 'Consulta una noticia', security: bearer, parameters: [{ in: 'path', name: 'id', required: true, schema: { type: 'string', format: 'uuid' } }], responses: { '200': { description: 'Noticia' }, '404': errorResponse } },
       patch: { tags: ['News'], summary: 'Actualiza noticia y avanza versión de sincronización', security: bearer, parameters: [{ in: 'path', name: 'id', required: true, schema: { type: 'string', format: 'uuid' } }], requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/NewsInput' } } } }, responses: { '200': { description: 'Noticia actualizada' }, '403': errorResponse, '404': errorResponse } },
     },
-    '/complaint-categories': { get: { tags: ['Complaints'], summary: 'Lista categorías activas', responses: { '200': { description: 'Catálogo público' } } } },
-    '/complaints': { post: { tags: ['Complaints'], summary: 'Crea queja identificada o anónima', description: 'La identificada requiere Bearer. La anónima nunca enlaza usuario, colaborador ni actor de auditoría.', security: [{}, { bearerAuth: [] }], requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/ComplaintInput' } } } }, responses: { '201': { description: 'Devuelve únicamente el folio público' }, '400': errorResponse, '401': errorResponse } } },
-    '/complaints/track/{folio}': { get: { tags: ['Complaints'], summary: 'Seguimiento público mínimo por folio', parameters: [{ in: 'path', name: 'folio', required: true, schema: { type: 'string', example: 'FLC-ABCD-1234' } }], responses: { '200': { description: 'Estado y fechas públicas' }, '404': errorResponse } } },
-    '/admin/complaints': { get: { tags: ['Complaints'], summary: 'Lista administrativa de quejas', security: bearer, parameters: pageParameters, responses: { '200': { description: 'Quejas paginadas' }, '403': errorResponse } } },
-    '/admin/complaints/{id}': { get: { tags: ['Complaints'], summary: 'Detalle administrativo de queja', security: bearer, parameters: [{ in: 'path', name: 'id', required: true, schema: { type: 'string', format: 'uuid' } }], responses: { '200': { description: 'Detalle de queja' }, '404': errorResponse } } },
-    '/admin/complaints/{id}/status': { patch: { tags: ['Complaints'], summary: 'Cambia estado y registra auditoría', security: bearer, parameters: [{ in: 'path', name: 'id', required: true, schema: { type: 'string', format: 'uuid' } }], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['statusCode'], properties: { statusCode: { type: 'string', example: 'UNDER_REVIEW' } } } } } }, responses: { '200': { description: 'Estado actualizado' }, '403': errorResponse, '409': errorResponse } } },
+    '/complaint-categories': {
+      get: {
+        tags: ['Complaints'],
+        summary: 'Lista categorías activas de Falcón te escucha',
+        security: bearer,
+        responses: {
+          '200': { description: 'Catálogo de categorías activas' },
+          '401': errorResponse,
+        },
+      },
+    },
+    '/complaints': {
+      post: {
+        tags: ['Complaints'],
+        summary: 'Registra un caso identificado en Falcón te escucha',
+        description:
+          'Requiere sesión autenticada Bearer. Todos los casos son identificados y clasifican tipo, categoría y gravedad.',
+        security: bearer,
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ComplaintInput' },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Resumen del caso creado con folio, gravedad y estado' },
+          '400': errorResponse,
+          '401': errorResponse,
+          '409': errorResponse,
+        },
+      },
+    },
+    '/complaints/mine': {
+      get: {
+        tags: ['Complaints'],
+        summary: 'Lista paginada de casos propios del colaborador autenticado',
+        security: bearer,
+        parameters: pageParameters,
+        responses: {
+          '200': { description: 'Mis casos registrados en Falcón te escucha' },
+          '400': errorResponse,
+          '401': errorResponse,
+        },
+      },
+    },
+    '/complaints/track/{folio}': {
+      get: {
+        tags: ['Complaints'],
+        summary: 'Seguimiento confidencial por folio (solo remitente o administrador)',
+        security: bearer,
+        parameters: [
+          {
+            in: 'path',
+            name: 'folio',
+            required: true,
+            schema: { type: 'string', example: 'FLC-ABCD-1234' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Estado, gravedad, nota de seguimiento y fechas del caso' },
+          '400': errorResponse,
+          '401': errorResponse,
+          '404': errorResponse,
+        },
+      },
+    },
+    '/admin/complaints': {
+      get: {
+        tags: ['Complaints'],
+        summary: 'Lista administrativa de casos (exclusivo rol administrador) con filtros y resumen',
+        security: bearer,
+        parameters: [
+          ...pageParameters,
+          {
+            in: 'query',
+            name: 'status',
+            schema: {
+              type: 'string',
+              enum: ['RECEIVED', 'UNDER_REVIEW', 'RESOLVED', 'CLOSED'],
+            },
+          },
+          {
+            in: 'query',
+            name: 'severity',
+            schema: {
+              type: 'string',
+              enum: ['BAJA', 'MEDIA', 'ALTA', 'CRITICA'],
+            },
+          },
+          {
+            in: 'query',
+            name: 'type',
+            schema: {
+              type: 'string',
+              enum: ['QUEJA', 'SUGERENCIA', 'INCIDENCIA'],
+            },
+          },
+          { in: 'query', name: 'category', schema: { type: 'string' } },
+          { in: 'query', name: 'from', schema: { type: 'string', format: 'date-time' } },
+          { in: 'query', name: 'to', schema: { type: 'string', format: 'date-time' } },
+        ],
+        responses: {
+          '200': { description: 'Casos paginados y resumen por gravedad y estado' },
+          '400': errorResponse,
+          '401': errorResponse,
+          '403': errorResponse,
+        },
+      },
+    },
+    '/admin/complaints/{id}': {
+      get: {
+        tags: ['Complaints'],
+        summary: 'Detalle administrativo de caso (exclusivo rol administrador)',
+        security: bearer,
+        parameters: [
+          {
+            in: 'path',
+            name: 'id',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Detalle completo del caso y remitente' },
+          '400': errorResponse,
+          '401': errorResponse,
+          '403': errorResponse,
+          '404': errorResponse,
+        },
+      },
+    },
+    '/admin/complaints/{id}/status': {
+      patch: {
+        tags: ['Complaints'],
+        summary:
+          'Actualiza estado, reclasifica gravedad o agrega nota de seguimiento (exclusivo rol administrador)',
+        security: bearer,
+        parameters: [
+          {
+            in: 'path',
+            name: 'id',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ComplaintStatusUpdate' },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Caso actualizado y auditado' },
+          '400': errorResponse,
+          '401': errorResponse,
+          '403': errorResponse,
+          '404': errorResponse,
+          '409': errorResponse,
+        },
+      },
+    },
     '/admin/audit': { get: { tags: ['Audit'], summary: 'Bitácora paginada para administrador o auditor', security: bearer, parameters: pageParameters, responses: { '200': { description: 'Eventos sin secretos' }, '403': errorResponse } } },
     '/sync/changes': { get: { tags: ['Synchronization'], summary: 'Obtiene cambios desde versión central', security: bearer, parameters: [{ in: 'query', name: 'sinceVersion', schema: { type: 'integer', minimum: 0, default: 0 } }], responses: { '200': { description: 'Perfil, directorio y noticias' }, '401': errorResponse } } },
     '/sync/operations': { post: { tags: ['Synchronization'], summary: 'Aplica outbox idempotente de noticias', security: bearer, responses: { '200': { description: 'Resultados applied, duplicate o conflict' }, '403': errorResponse } } },
