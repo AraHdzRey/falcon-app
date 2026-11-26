@@ -1129,6 +1129,7 @@ test('exportación de reportes PDF en Falcón te escucha es exclusiva de adminis
   assert.equal(summaryPdf.status, 200);
   assert.match(String(summaryPdf.headers['content-type']), /^application\/pdf/);
   assert.equal(summaryPdf.headers['cache-control'], 'no-store');
+  assert.equal(summaryPdf.headers['referrer-policy'], 'no-referrer');
   assert.match(
     String(summaryPdf.headers['content-disposition']),
     /^attachment; filename="falcon-te-escucha-reporte-\d{8}\.pdf"$/,
@@ -1154,6 +1155,7 @@ test('exportación de reportes PDF en Falcón te escucha es exclusiva de adminis
   assert.equal(detailPdf.status, 200);
   assert.match(String(detailPdf.headers['content-type']), /^application\/pdf/);
   assert.equal(detailPdf.headers['cache-control'], 'no-store');
+  assert.equal(detailPdf.headers['referrer-policy'], 'no-referrer');
   assert.equal(
     detailPdf.headers['content-disposition'],
     `attachment; filename="falcon-te-escucha-${complaintView.folio}.pdf"`,
@@ -1184,6 +1186,162 @@ test('exportación de reportes PDF en Falcón te escucha es exclusiva de adminis
     ).status,
     404,
   );
+});
+
+test('POST /admin/complaints/report-ticket emite tickets de un solo uso y permite descarga PDF sin Bearer en la URL', async () => {
+  const { app, repository, modulesRepository, tokens } = setup();
+  const token = tokens.sign({ userId: 10, tokenVersion: 0 });
+  const authorization = { Authorization: `Bearer ${token}` };
+
+  assert.equal(
+    (
+      await request(app)
+        .post('/admin/complaints/report-ticket')
+        .send({ scope: 'summary' })
+    ).status,
+    401,
+  );
+
+  for (const forbiddenRole of [
+    'colaborador',
+    'responsable_quejas',
+    'director',
+    'auditor',
+  ] as const) {
+    repository.sessionUser = { ...collaborator, role: forbiddenRole };
+    assert.equal(
+      (
+        await request(app)
+          .post('/admin/complaints/report-ticket')
+          .set(authorization)
+          .send({ scope: 'summary' })
+      ).status,
+      403,
+      `POST /admin/complaints/report-ticket debe rechazar rol ${forbiddenRole}`,
+    );
+  }
+
+  repository.sessionUser = { ...collaborator, role: 'administrador' };
+
+  for (const invalidPayload of [
+    { scope: 'otro' },
+    { scope: 'single', complaintId: 'no-es-uuid' },
+    { scope: 'summary', filters: { severity: 'INVALIDA' } },
+    { scope: 'summary', filters: { from: '2026-12-01', to: '2026-11-01' } },
+    { scope: 'summary', filters: ['no-objeto'] },
+  ]) {
+    const invalidResponse = await request(app)
+      .post('/admin/complaints/report-ticket')
+      .set(authorization)
+      .send(invalidPayload);
+    assert.equal(invalidResponse.status, 400);
+  }
+
+  const summaryTicketRes = await request(app)
+    .post('/admin/complaints/report-ticket')
+    .set(authorization)
+    .send({
+      scope: 'summary',
+      filters: { severity: 'ALTA', type: 'QUEJA' },
+    });
+  assert.equal(summaryTicketRes.status, 201);
+  assert.equal(summaryTicketRes.body.status, 'ok');
+  assert.equal(summaryTicketRes.body.expiresInSeconds, 60);
+  const summaryTicket = String(summaryTicketRes.body.ticket);
+  assert.ok(summaryTicket.length >= 32);
+  assert.equal(
+    summaryTicketRes.body.downloadPath,
+    `/admin/complaints/report.pdf?ticket=${encodeURIComponent(summaryTicket)}`,
+  );
+
+  const summaryDownload = await request(app)
+    .get(
+      `/admin/complaints/report.pdf?ticket=${encodeURIComponent(summaryTicket)}&severity=BAJA`,
+    )
+    .buffer(true)
+    .parse((res, callback) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (chunk: Buffer) => chunks.push(chunk));
+      res.on('end', () => callback(null, Buffer.concat(chunks)));
+    });
+  assert.equal(summaryDownload.status, 200);
+  assert.match(
+    String(summaryDownload.headers['content-type']),
+    /^application\/pdf/,
+  );
+  assert.equal(summaryDownload.headers['cache-control'], 'no-store');
+  assert.equal(summaryDownload.headers['referrer-policy'], 'no-referrer');
+  assert.equal(summaryDownload.body.subarray(0, 5).toString('ascii'), '%PDF-');
+  assert.equal(modulesRepository.exportedReports.length, 1);
+  assert.deepEqual(modulesRepository.exportedReports[0]?.details, {
+    scope: 'summary',
+    filters: { severity: 'ALTA', type: 'QUEJA' },
+    totalItems: 1,
+  });
+
+  const reusedSummaryTicket = await request(app).get(
+    `/admin/complaints/report.pdf?ticket=${encodeURIComponent(summaryTicket)}`,
+  );
+  assert.equal(reusedSummaryTicket.status, 401);
+
+  const singleTicketRes = await request(app)
+    .post('/admin/complaints/report-ticket')
+    .set(authorization)
+    .send({
+      scope: 'single',
+      complaintId: complaintView.id,
+    });
+  assert.equal(singleTicketRes.status, 201);
+  assert.equal(singleTicketRes.body.expiresInSeconds, 60);
+  const singleTicket = String(singleTicketRes.body.ticket);
+  assert.equal(
+    singleTicketRes.body.downloadPath,
+    `/admin/complaints/${complaintView.id}/report.pdf?ticket=${encodeURIComponent(singleTicket)}`,
+  );
+
+  const wrongComplaintAttempt = await request(app).get(
+    `/admin/complaints/${otherUserComplaintView.id}/report.pdf?ticket=${encodeURIComponent(singleTicket)}`,
+  );
+  assert.equal(wrongComplaintAttempt.status, 401);
+
+  const wrongScopeAttempt = await request(app).get(
+    `/admin/complaints/report.pdf?ticket=${encodeURIComponent(singleTicket)}`,
+  );
+  assert.equal(wrongScopeAttempt.status, 401);
+
+  const singleDownload = await request(app)
+    .get(singleTicketRes.body.downloadPath)
+    .buffer(true)
+    .parse((res, callback) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (chunk: Buffer) => chunks.push(chunk));
+      res.on('end', () => callback(null, Buffer.concat(chunks)));
+    });
+  assert.equal(singleDownload.status, 200);
+  assert.match(
+    String(singleDownload.headers['content-type']),
+    /^application\/pdf/,
+  );
+  assert.equal(singleDownload.headers['cache-control'], 'no-store');
+  assert.equal(singleDownload.headers['referrer-policy'], 'no-referrer');
+  assert.equal(singleDownload.body.subarray(0, 5).toString('ascii'), '%PDF-');
+  assert.equal(modulesRepository.exportedReports.length, 2);
+  assert.deepEqual(modulesRepository.exportedReports[1]?.details, {
+    scope: 'single',
+    complaintId: complaintView.id,
+    folio: complaintView.folio,
+    totalItems: 1,
+  });
+
+  const reusedSingleTicket = await request(app).get(
+    singleTicketRes.body.downloadPath,
+  );
+  assert.equal(reusedSingleTicket.status, 401);
+
+  const nonexistentTicket = await request(app).get(
+    '/admin/complaints/report.pdf?ticket=ticket-inexistente',
+  );
+  assert.equal(nonexistentTicket.status, 401);
 });
 
 test('auditor puede consultar bitácora paginada y colaborador no', async () => {

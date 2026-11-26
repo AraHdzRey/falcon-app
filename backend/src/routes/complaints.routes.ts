@@ -1,9 +1,10 @@
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import { requireAuth, requireRole } from '../middlewares/auth.middleware';
 import {
   buildComplaintDetailPdf,
   buildComplaintsSummaryPdf,
 } from '../services/complaints-pdf.service';
+import { createPdfTicketService } from '../services/pdf-ticket.service';
 import type { TokenService } from '../services/token.service';
 import type { AuthRepository } from '../types/auth';
 import type {
@@ -77,9 +78,33 @@ const readIsoDate = (value: unknown): string | null => {
   return Number.isNaN(Date.parse(normalized)) ? null : normalized;
 };
 
+const ALLOWED_FILTER_KEYS: ReadonlySet<string> = new Set([
+  'status',
+  'severity',
+  'type',
+  'category',
+  'from',
+  'to',
+  'page',
+  'pageSize',
+  'ticket',
+]);
+
+const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
 const parseComplaintFilters = (
   query: Record<string, unknown>,
+  strictKeys = false,
 ): ComplaintFilters | null => {
+  if (strictKeys) {
+    for (const key of Object.keys(query)) {
+      if (!ALLOWED_FILTER_KEYS.has(key)) {
+        return null;
+      }
+    }
+  }
+
   const filters: ComplaintFilters = {};
 
   if (query.status !== undefined) {
@@ -137,6 +162,21 @@ export const createComplaintsRouter = (
   const router = Router();
   const authenticate = requireAuth(authRepository, tokens);
   const complaintsAdmin = requireRole('administrador');
+  const pdfTickets = createPdfTicketService();
+
+  const authenticateAdminOrTicket: RequestHandler = (req, res, next) => {
+    if (req.query.ticket !== undefined) {
+      next();
+      return;
+    }
+    authenticate(req, res, (authError?: unknown) => {
+      if (authError) {
+        next(authError);
+        return;
+      }
+      complaintsAdmin(req, res, next);
+    });
+  };
 
   router.get('/complaint-categories', authenticate, async (_req, res, next) => {
     try {
@@ -270,23 +310,120 @@ export const createComplaintsRouter = (
     },
   );
 
-  router.get(
-    '/admin/complaints/report.pdf',
+  router.post(
+    '/admin/complaints/report-ticket',
     authenticate,
     complaintsAdmin,
-    async (req, res, next) => {
-      const filters = parseComplaintFilters(
-        req.query as Record<string, unknown>,
-      );
-      if (!filters) {
-        res.status(400).json({ status: 'error', message: 'Filtros inválidos' });
+    (req, res) => {
+      if (!isPlainRecord(req.body)) {
+        res.status(400).json({
+          status: 'error',
+          message: 'Solicitud de ticket inválida',
+        });
         return;
       }
 
+      const actor = res.locals.authUser!;
+      const scope = req.body.scope;
+
+      if (scope === 'summary') {
+        if (req.body.filters !== undefined && !isPlainRecord(req.body.filters)) {
+          res.status(400).json({
+            status: 'error',
+            message: 'Filtros inválidos',
+          });
+          return;
+        }
+        const filters =
+          req.body.filters === undefined
+            ? {}
+            : parseComplaintFilters(req.body.filters, true);
+        if (!filters) {
+          res.status(400).json({
+            status: 'error',
+            message: 'Filtros inválidos',
+          });
+          return;
+        }
+        const { ticket, expiresInSeconds } = pdfTickets.issue({
+          actor,
+          scope: 'summary',
+          filters,
+        });
+        res.status(201).json({
+          status: 'ok',
+          ticket,
+          expiresInSeconds,
+          downloadPath: `/admin/complaints/report.pdf?ticket=${encodeURIComponent(ticket)}`,
+        });
+        return;
+      }
+
+      if (scope === 'single') {
+        const complaintId =
+          typeof req.body.complaintId === 'string'
+            ? req.body.complaintId.trim()
+            : '';
+        if (!UUID_PATTERN.test(complaintId)) {
+          res.status(400).json({
+            status: 'error',
+            message: 'ID inválido',
+          });
+          return;
+        }
+        const { ticket, expiresInSeconds } = pdfTickets.issue({
+          actor,
+          scope: 'single',
+          complaintId,
+        });
+        res.status(201).json({
+          status: 'ok',
+          ticket,
+          expiresInSeconds,
+          downloadPath: `/admin/complaints/${complaintId}/report.pdf?ticket=${encodeURIComponent(ticket)}`,
+        });
+        return;
+      }
+
+      res.status(400).json({
+        status: 'error',
+        message: 'Alcance de reporte inválido',
+      });
+    },
+  );
+
+  router.get(
+    '/admin/complaints/report.pdf',
+    authenticateAdminOrTicket,
+    async (req, res, next) => {
+      let actor = res.locals.authUser;
+      let filters: ComplaintFilters | null = null;
+
+      if (req.query.ticket !== undefined) {
+        const rawTicket =
+          typeof req.query.ticket === 'string' ? req.query.ticket : '';
+        const consumed = pdfTickets.consume(rawTicket, 'summary');
+        if (!consumed) {
+          res.status(401).json({
+            status: 'error',
+            message: 'Ticket de descarga inválido o expirado',
+          });
+          return;
+        }
+        actor = consumed.actor;
+        filters = consumed.filters ?? {};
+      } else {
+        filters = parseComplaintFilters(req.query as Record<string, unknown>);
+        if (!filters) {
+          res.status(400).json({ status: 'error', message: 'Filtros inválidos' });
+          return;
+        }
+      }
+
       try {
-        const actor = res.locals.authUser!;
+        const resolvedActor = actor!;
         const result = await repository.listComplaints(1, 500, filters);
-        await repository.recordComplaintReportExport(actor, {
+        await repository.recordComplaintReportExport(resolvedActor, {
           scope: 'summary',
           filters,
           totalItems: result.items.length,
@@ -294,7 +431,7 @@ export const createComplaintsRouter = (
         const pdfBuffer = await buildComplaintsSummaryPdf(
           result,
           filters,
-          actor,
+          resolvedActor,
         );
         const dateStamp = new Date()
           .toISOString()
@@ -306,6 +443,7 @@ export const createComplaintsRouter = (
             'Content-Type': 'application/pdf',
             'Content-Disposition': `attachment; filename="falcon-te-escucha-reporte-${dateStamp}.pdf"`,
             'Cache-Control': 'no-store',
+            'Referrer-Policy': 'no-referrer',
           })
           .send(pdfBuffer);
       } catch (error) {
@@ -316,36 +454,57 @@ export const createComplaintsRouter = (
 
   router.get(
     '/admin/complaints/:id/report.pdf',
-    authenticate,
-    complaintsAdmin,
+    authenticateAdminOrTicket,
     async (req, res, next) => {
       const id = readRouteParam(req.params.id);
-      if (!id || !UUID_PATTERN.test(id)) {
+      let actor = res.locals.authUser;
+
+      if (req.query.ticket !== undefined) {
+        const rawTicket =
+          typeof req.query.ticket === 'string' ? req.query.ticket : '';
+        const consumed =
+          id && UUID_PATTERN.test(id)
+            ? pdfTickets.consume(rawTicket, 'single', id)
+            : null;
+        if (!consumed) {
+          res.status(401).json({
+            status: 'error',
+            message: 'Ticket de descarga inválido o expirado',
+          });
+          return;
+        }
+        actor = consumed.actor;
+      } else if (!id || !UUID_PATTERN.test(id)) {
         res.status(400).json({ status: 'error', message: 'ID inválido' });
         return;
       }
+
       try {
-        const complaint = await repository.getComplaint(id);
+        const complaint = await repository.getComplaint(id!);
         if (!complaint) {
           res
             .status(404)
             .json({ status: 'error', message: 'Queja no encontrada' });
           return;
         }
-        const actor = res.locals.authUser!;
-        await repository.recordComplaintReportExport(actor, {
+        const resolvedActor = actor!;
+        await repository.recordComplaintReportExport(resolvedActor, {
           scope: 'single',
           complaintId: complaint.id,
           folio: complaint.folio,
           totalItems: 1,
         });
-        const pdfBuffer = await buildComplaintDetailPdf(complaint, actor);
+        const pdfBuffer = await buildComplaintDetailPdf(
+          complaint,
+          resolvedActor,
+        );
         res
           .status(200)
           .set({
             'Content-Type': 'application/pdf',
             'Content-Disposition': `attachment; filename="falcon-te-escucha-${complaint.folio}.pdf"`,
             'Cache-Control': 'no-store',
+            'Referrer-Policy': 'no-referrer',
           })
           .send(pdfBuffer);
       } catch (error) {

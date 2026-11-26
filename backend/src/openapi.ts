@@ -128,6 +128,43 @@ export const openApiDocument = {
           },
         },
       },
+      ComplaintReportTicketInput: {
+        type: 'object',
+        required: ['scope'],
+        properties: {
+          scope: {
+            type: 'string',
+            enum: ['summary', 'single'],
+            example: 'summary',
+          },
+          complaintId: {
+            type: 'string',
+            format: 'uuid',
+            description: 'Obligatorio cuando scope es single',
+          },
+          filters: {
+            type: 'object',
+            description: 'Filtros opcionales cuando scope es summary',
+            properties: {
+              status: {
+                type: 'string',
+                enum: ['RECEIVED', 'UNDER_REVIEW', 'RESOLVED', 'CLOSED'],
+              },
+              severity: {
+                type: 'string',
+                enum: ['BAJA', 'MEDIA', 'ALTA', 'CRITICA'],
+              },
+              type: {
+                type: 'string',
+                enum: ['QUEJA', 'SUGERENCIA', 'INCIDENCIA'],
+              },
+              category: { type: 'string' },
+              from: { type: 'string', format: 'date-time' },
+              to: { type: 'string', format: 'date-time' },
+            },
+          },
+        },
+      },
     },
   },
   paths: {
@@ -265,13 +302,46 @@ export const openApiDocument = {
         },
       },
     },
+    '/admin/complaints/report-ticket': {
+      post: {
+        tags: ['Complaints'],
+        summary:
+          'Emite un ticket efímero de un solo uso (60 s) para descargar reportes PDF sin exponer el JWT en la URL (exclusivo rol administrador)',
+        security: bearer,
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ComplaintReportTicketInput',
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Ticket de un solo uso y ruta relativa de descarga PDF',
+          },
+          '400': errorResponse,
+          '401': errorResponse,
+          '403': errorResponse,
+        },
+      },
+    },
     '/admin/complaints/report.pdf': {
       get: {
         tags: ['Complaints'],
         summary:
-          'Exporta reporte PDF consolidado de casos filtrados (exclusivo rol administrador)',
-        security: bearer,
+          'Exporta reporte PDF consolidado de casos filtrados (exclusivo rol administrador via Bearer o ticket de un solo uso)',
+        security: [{}, { bearerAuth: [] }],
         parameters: [
+          {
+            in: 'query',
+            name: 'ticket',
+            schema: { type: 'string' },
+            description:
+              'Ticket de un solo uso emitido por POST /admin/complaints/report-ticket',
+          },
           {
             in: 'query',
             name: 'status',
@@ -319,14 +389,21 @@ export const openApiDocument = {
       get: {
         tags: ['Complaints'],
         summary:
-          'Exporta ficha PDF confidencial de un caso individual (exclusivo rol administrador)',
-        security: bearer,
+          'Exporta ficha PDF confidencial de un caso individual (exclusivo rol administrador via Bearer o ticket de un solo uso)',
+        security: [{}, { bearerAuth: [] }],
         parameters: [
           {
             in: 'path',
             name: 'id',
             required: true,
             schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            in: 'query',
+            name: 'ticket',
+            schema: { type: 'string' },
+            description:
+              'Ticket de un solo uso emitido por POST /admin/complaints/report-ticket',
           },
         ],
         responses: {
