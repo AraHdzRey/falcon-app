@@ -56,12 +56,12 @@ export default function InicioScreen({
           style={styles.module}
           onPress={onComplaints}
           accessibilityRole="button"
-          accessibilityLabel="Quejas"
+          accessibilityLabel="Falcón te escucha"
         >
           <Text style={styles.moduleIcon}>!</Text>
-          <Text style={styles.moduleTitle}>Quejas</Text>
+          <Text style={styles.moduleTitle}>Falcón te escucha</Text>
           <Text style={styles.moduleDescription}>
-            Envía una queja o sugerencia de forma segura.
+            Reporta quejas, sugerencias o incidencias con seguimiento confidencial.
           </Text>
         </Pressable>
 
